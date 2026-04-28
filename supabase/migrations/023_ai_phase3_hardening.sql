@@ -108,7 +108,8 @@ $$;
 revoke all on function public.ai_quote_credits(text, text, text, int, text) from public;
 grant execute on function public.ai_quote_credits(text, text, text, int, text) to authenticated;
 
-drop function if exists public.start_ai_job(text, text, text, text, int);`ndrop function if exists public.start_ai_job(text, text, text, text, int, text);
+drop function if exists public.start_ai_job(text, text, text, text, int);
+drop function if exists public.start_ai_job(text, text, text, text, int, text);
 create or replace function public.start_ai_job(
   p_job_type text,
   p_prompt text,

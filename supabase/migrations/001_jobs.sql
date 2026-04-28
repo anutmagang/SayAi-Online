@@ -16,6 +16,9 @@ create index if not exists jobs_user_id_created_at_idx
 
 alter table public.jobs enable row level security;
 
+drop policy if exists "jobs_select_own" on public.jobs;
+drop policy if exists "jobs_insert_own" on public.jobs;
+
 create policy "jobs_select_own"
   on public.jobs for select
   using (auth.uid() = user_id);

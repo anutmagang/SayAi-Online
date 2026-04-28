@@ -1,9 +1,8 @@
 """Turn a transcript into a list of clip suggestions via an LLM.
 
-Provider choice goes through `clipper.llm.pick_provider`, which selects among
-Groq / Gemini / OpenAI / Anthropic based on the user's tier and preference.
-Free tier tries Groq first, then Gemini if Groq fails (see `router._TIER_FALLBACK`).
-Pro can pin a specific vendor.
+Providers are ranked via `build_providers_for_tier`. Each candidate is tried in order:
+HTTP/`complete_json` failure skips to the next; **invalid/truncated JSON** also skips
+to the next (Gemini sometimes truncates long captions mid-string).
 """
 
 from __future__ import annotations
@@ -15,7 +14,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from clipper.config import Settings
-from clipper.llm import LLMError, LLMResult, pick_provider
+from clipper.llm import LLMError
+from clipper.llm.router import build_providers_for_tier
 
 log = logging.getLogger(__name__)
 
@@ -101,15 +101,13 @@ def _prompt(settings: Settings, transcript_block: str, duration: float) -> tuple
         "requested duration range when possible.\n"
         "For `label`: punchy 3–8 word on-screen title (hook-style), same language "
         "as the transcript.\n"
-        "For `post_caption`: 1–4 sentences ready to paste as the video description "
-        "(same language as transcript). Include a light CTA when natural "
-        "(e.g. follow, comment, save). Avoid clickbait that contradicts the clip; "
-        "you may use a few tasteful emojis if it fits the niche.\n"
-        "For `hashtags`: 8–14 strings, each starting with #. Mix 2–3 broad tags "
-        "(topic/language) with niche/long-tail tags relevant to this exact moment. "
-        "SEO-friendly: no duplicate tags, no stuffing of the same word, no "
-        "off-topic trending abuse. Prefer Indonesian tags if the transcript is "
-        "Indonesian; otherwise match the transcript language."
+        "For `post_caption`: 1–3 short sentences (under 380 characters total), same "
+        "language as transcript. Include a light CTA when natural; avoid rambling.\n"
+        "For `hashtags`: 6–10 strings, each starting with #. Each tag max 28 characters "
+        "including #; prefer compact tags without spaces inside a tag. Mix broad + niche; "
+        "no duplicates; stay on-topic. Prefer Indonesian tags if the transcript is "
+        "Indonesian; otherwise match the transcript language. Keep total JSON compact "
+        "so the response is complete."
     )
     user = (
         f"Video duration seconds: {duration:.2f}\n"
@@ -129,27 +127,51 @@ def suggest_clips(
 ) -> AnalyzeOutput:
     system, user = _prompt(settings, transcript_block, video_duration_sec)
 
-    try:
-        result: LLMResult = pick_provider(
-            system=system,
-            user=user,
-            max_tokens=4096,
-            tier=settings.user_tier,
-            preference=settings.llm_preference,
-            pinned_model=settings.llm_model_id or None,
+    # Higher ceiling avoids Gemini truncating mid-string JSON on long captions/hashtags.
+    max_out = 8192
+    providers = build_providers_for_tier(
+        settings.user_tier,
+        settings.llm_preference,
+        settings.llm_model_id or None,
+    )
+    if not providers:
+        raise RuntimeError(
+            "No LLM provider available. Set GROQ_API_KEY at minimum "
+            "(or GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY)."
         )
-    except LLMError as e:
-        raise RuntimeError(
-            f"No LLM provider succeeded. Configure at least GROQ_API_KEY. ({e})"
-        ) from e
 
-    try:
-        items = _extract_json_array(result.text)
-    except (ValueError, json.JSONDecodeError) as e:
-        log.error("llm=%s raw=%s", result.provider, result.text[:500])
+    last_err: BaseException | None = None
+    result_provider = ""
+    result_model = ""
+
+    for p in providers:
+        try:
+            result = p.complete_json(system=system, user=user, max_tokens=max_out)
+        except LLMError as e:
+            log.warning("llm provider=%s call failed: %s", p.name, e)
+            last_err = e
+            continue
+        try:
+            items = _extract_json_array(result.text)
+        except (ValueError, json.JSONDecodeError) as e:
+            log.error(
+                "llm=%s model=%s unparseable JSON (%s); raw head=%s",
+                p.name,
+                getattr(result, "model", ""),
+                e,
+                (result.text or "")[:800],
+            )
+            last_err = e
+            continue
+
+        result_provider = result.provider
+        result_model = result.model
+        break
+    else:
         raise RuntimeError(
-            f"LLM {result.provider}/{result.model} returned unparseable JSON: {e}"
-        ) from e
+            "No LLM provider returned valid JSON for clip suggestions. "
+            f"Last error: {last_err}"
+        ) from last_err
 
     clips: list[ClipSuggestion] = []
     for obj in items:
@@ -172,13 +194,13 @@ def suggest_clips(
 
     if not clips:
         raise RuntimeError(
-            f"LLM {result.provider}/{result.model} returned no usable clips."
+            f"LLM {result_provider}/{result_model} returned no usable clips."
         )
 
     return AnalyzeOutput(
         clips=clips[: settings.max_clips],
-        provider=result.provider,
-        model=result.model,
+        provider=result_provider,
+        model=result_model,
     )
 
 

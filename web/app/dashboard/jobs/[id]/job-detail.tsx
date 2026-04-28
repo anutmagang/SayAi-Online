@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -200,6 +200,26 @@ function ClipCard({
 }) {
   const clipId = String(index).padStart(2, "0");
   const src = `/api/jobs/${jobId}/clips/${clipId}`;
+  const caption = (clip.post_caption ?? "").trim();
+  const hashtags = (clip.hashtags ?? "").trim();
+  const copyPayload = [caption, hashtags].filter(Boolean).join("\n\n");
+  const [copyState, setCopyState] = useState<"idle" | "ok" | "err">("idle");
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  async function copyCaptionBlock() {
+    if (!copyPayload) return;
+    try {
+      await navigator.clipboard.writeText(copyPayload);
+      setCopyState("ok");
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      setCopyState("err");
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopyState("idle"), 2500);
+    }
+  }
+
   return (
     <li className="rounded-xl border border-edge bg-surface p-4 shadow-sm">
       <p className="text-sm font-medium text-ink">
@@ -209,6 +229,34 @@ function ClipCard({
         </span>
       </p>
       {clip.label ? <p className="mt-1 line-clamp-2 text-sm text-ink-muted">{clip.label}</p> : null}
+      {caption || hashtags ? (
+        <div className="mt-3 space-y-2 rounded-lg border border-edge/80 bg-canvas/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Caption &amp; hashtag (SEO)
+            </p>
+            {copyPayload ? (
+              <button
+                type="button"
+                onClick={() => void copyCaptionBlock()}
+                className="rounded-md border border-edge bg-surface px-2 py-1 text-[11px] font-medium text-ink hover:bg-subtle"
+              >
+                {copyState === "ok" ? "Tersalin" : copyState === "err" ? "Gagal salin" : "Salin semua"}
+              </button>
+            ) : null}
+          </div>
+          {caption ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{caption}</p>
+          ) : (
+            <p className="text-xs italic text-ink-muted">Tidak ada caption dari model.</p>
+          )}
+          {hashtags ? (
+            <p className="break-words text-sm text-accent">{hashtags}</p>
+          ) : caption ? (
+            <p className="text-xs italic text-ink-muted">Tidak ada hashtag dari model.</p>
+          ) : null}
+        </div>
+      ) : null}
       <video
         className="mt-3 max-h-[min(92vh,960px)] w-full rounded-lg bg-black object-contain"
         controls

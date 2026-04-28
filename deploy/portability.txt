@@ -1,0 +1,28 @@
+Pindah VPS / hosting — checklist singkat
+=====================================
+
+1) Pakai Docker (sudah ada Dockerfile + docker-compose.yml)
+   - Di server baru: install Docker + Docker Compose plugin.
+   - Salin repo + file .env (atau isi secret di panel hosting).
+   - Jalankan: docker compose build
+   - Jalankan job: docker compose run --rm clipper "<URL>"
+
+2) Jangan hardcode path server
+   - Output: set CLIPPER_OUTPUT (lihat docker-compose) atau flag -o.
+   - Secret: hanya lewat .env / variabel lingkungan penyedia.
+
+3) Data yang mau ikut pindah
+   - Volume Docker: backup volume atau ganti ke mount folder host (./output:/data/output).
+   - Nanti jika pakai DB/queue: pakai managed service (Supabase, Redis cloud) supaya IP VPS tidak mengikat data.
+
+4) DNS & reverse proxy (jika sudah ada API/web)
+   - Ganti A record / CNAME ke IP baru.
+   - Atau tetap di belakang satu hostname CDN.
+
+5) Otomasi provisioning (opsional)
+   - Terraform / OpenTofu: VM + cloud-init (lihat deploy/cloud-init.example.yaml).
+   - Ansible: playbook yang menjalankan scripts/install-system-deps.sh lalu deploy container.
+
+6) Tanpa Docker
+   - Tetap bisa: venv + pip + scripts/install-system-deps.sh
+   - Kurang seragam antar distro; Docker lebih mudah dipindah.

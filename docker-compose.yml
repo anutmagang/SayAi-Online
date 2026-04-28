@@ -1,0 +1,24 @@
+# Portable stack: same compose file works on any VPS that runs Docker.
+# Build once, copy .env, run.
+#
+#   docker compose build
+#   docker compose run --rm clipper "https://www.youtube.com/watch?v=..."
+#
+# Output jobs live in the named volume `clipper_output` at /data/output inside the container.
+# To bind a host folder instead, replace `clipper_output:/data/output` with `./output:/data/output`.
+
+services:
+  clipper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-video-clipper:latest
+    env_file:
+      - .env
+    environment:
+      CLIPPER_OUTPUT: /data/output
+    volumes:
+      - clipper_output:/data/output
+
+volumes:
+  clipper_output:

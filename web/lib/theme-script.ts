@@ -1,0 +1,2 @@
+/** Dipakai `next/script` beforeInteractive agar tema dari localStorage diterapkan sebelum paint pertama. */
+export const THEME_BOOT_SCRIPT = `(function(){try{var k='fai-clipper-theme',t=localStorage.getItem(k);if(t==='elegant'){t='glass';localStorage.setItem(k,t);}if(t!=='light'&&t!=='dark'&&t!=='glass')t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`;

@@ -1,0 +1,17 @@
+yt-dlp>=2024.8.0
+faster-whisper>=1.0.0
+python-dotenv>=1.0.0
+cryptography>=42.0.0
+mediapipe>=0.10.14
+opencv-python-headless>=4.9.0.80
+requests>=2.31.0
+
+# LLM providers — install only what you plan to use.
+# Groq is free, fastest, and the default for free/starter tiers.
+groq>=0.11.0
+google-generativeai>=0.8.3
+openai>=1.52.0
+anthropic>=0.40.0
+
+# Observability (optional — activated only when SENTRY_DSN is set).
+sentry-sdk>=2.15.0

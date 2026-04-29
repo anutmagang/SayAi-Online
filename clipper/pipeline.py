@@ -55,10 +55,22 @@ def run_pipeline(
     job_dir = root / _job_dir_name(job_id)
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    emit(settings, phase="downloading", message="Mengambil sumber video", progress=5)
+    if url is not None:
+        u = url.strip().lower()
+        if "youtube.com" in u or "youtu.be" in u:
+            emit(
+                settings,
+                phase="downloading",
+                message="Menyiapkan unduhan YouTube (yt-dlp — bisa beberapa menit; progres diperbarui berkala)",
+                progress=5,
+            )
+        else:
+            emit(settings, phase="downloading", message="Mengambil sumber video dari URL", progress=5)
+    else:
+        emit(settings, phase="downloading", message="Mengambil sumber video (file upload)", progress=5)
 
     if url is not None:
-        source = download_video(url.strip(), job_dir)
+        source = download_video(url.strip(), job_dir, settings)
         source_label = url.strip()
     else:
         assert input_file is not None

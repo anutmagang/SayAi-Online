@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 from clipper.binaries import ytdlp_bin
+from clipper.config import Settings
 
 _COOKIES_WIKI = (
     "https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
@@ -124,7 +127,72 @@ def _youtube_extractor_attempts(url: str) -> list[str | None]:
     return chain
 
 
-def download_video(url: str, work_dir: Path) -> Path:
+def _can_emit_job_events(settings: Settings | None) -> bool:
+    if settings is None:
+        return False
+    return bool(settings.job_events_url and settings.job_id and settings.user_id)
+
+
+def _emit_download(
+    settings: Settings | None,
+    *,
+    message: str,
+    progress: float,
+) -> None:
+    if not _can_emit_job_events(settings):
+        return
+    from clipper.events import emit
+
+    emit(settings, phase="downloading", message=message[:500], progress=progress)
+
+
+def _run_ytdlp_with_heartbeat(
+    full: list[str],
+    timeout_sec: int,
+    settings: Settings | None,
+    url: str,
+    label: str,
+    idx: int,
+    total: int,
+) -> subprocess.CompletedProcess[str]:
+    """Heartbeat ke job_events supaya UI tidak tertahan di 5% tanpa penjelasan."""
+    stop = threading.Event()
+    start = time.monotonic()
+    base = "YouTube" if _is_youtube(url) else "URL"
+
+    def heartbeat() -> None:
+        while True:
+            if stop.wait(20):
+                return
+            elapsed = int(time.monotonic() - start)
+            msg = (
+                f"{base}: yt-dlp masih berjalan · {label[:90]} "
+                f"(langkah {idx}/{total}, ~{elapsed}s — unduh/merge bisa beberapa menit)"
+            )
+            prog = min(
+                14.0,
+                5.0 + (idx - 1) / max(total, 1) * 4.0 + min(5.0, elapsed / 90.0),
+            )
+            _emit_download(settings, message=msg, progress=prog)
+
+    th: threading.Thread | None = None
+    if _can_emit_job_events(settings):
+        th = threading.Thread(target=heartbeat, name="ytdlp-heartbeat", daemon=True)
+        th.start()
+    try:
+        return subprocess.run(
+            full,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+    finally:
+        stop.set()
+        if th is not None and th.is_alive():
+            th.join(timeout=2.0)
+
+
+def download_video(url: str, work_dir: Path, settings: Settings | None = None) -> Path:
     """Download best merged video+audio with yt-dlp into work_dir."""
     work_dir.mkdir(parents=True, exist_ok=True)
     template = str(work_dir / "source.%(ext)s")
@@ -182,24 +250,46 @@ def download_video(url: str, work_dir: Path) -> Path:
             (f"{ex} | best no merge", build_cmd(extractor_args, False, "best") + [url]),
         ]
 
+    plan: list[tuple[str, list[str]]] = []
+    for extractor in _youtube_extractor_attempts(url):
+        for label, full in format_attempts(extractor):
+            plan.append((label, full))
+    total_attempts = len(plan)
+
+    if _can_emit_job_events(settings) and total_attempts:
+        yt_hint = (
+            f"YouTube: mulai yt-dlp — sampai {total_attempts} percobaan client/format bila perlu "
+            "(progres di bawah diperbarui tiap ~20s saat unduhan panjang)."
+            if _is_youtube(url)
+            else f"Mengunduh sumber URL — {total_attempts} percobaan bila perlu."
+        )
+        _emit_download(settings, message=yt_hint, progress=5.0)
+
     last_err = ""
     log_lines: list[str] = []
     ok = False
-    for extractor in _youtube_extractor_attempts(url):
-        for label, full in format_attempts(extractor):
-            r = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
-            if r.returncode == 0:
-                ok = True
-                break
-            blob = (r.stderr or "") + "\n" + (r.stdout or "")
-            tail = blob.strip()[-3500:]
-            last_err = f"[{label}] {tail}"
-            log_lines.append(last_err)
-            if _should_retry_ytdlp_attempt(blob):
-                continue
-            raise RuntimeError(f"yt-dlp gagal ({label}):\n{tail}") from None
-        if ok:
+    for idx, (label, full) in enumerate(plan, start=1):
+        if _can_emit_job_events(settings):
+            base = "YouTube" if _is_youtube(url) else "URL"
+            prog = 5.0 + min(8.0, (idx - 1) / max(total_attempts, 1) * 8.0)
+            _emit_download(
+                settings,
+                message=f"{base}: mencoba · {label[:120]} ({idx}/{total_attempts})",
+                progress=prog,
+            )
+        r = _run_ytdlp_with_heartbeat(
+            full, timeout, settings, url, label, idx, total_attempts
+        )
+        if r.returncode == 0:
+            ok = True
             break
+        blob = (r.stderr or "") + "\n" + (r.stdout or "")
+        tail = blob.strip()[-3500:]
+        last_err = f"[{label}] {tail}"
+        log_lines.append(last_err)
+        if _should_retry_ytdlp_attempt(blob):
+            continue
+        raise RuntimeError(f"yt-dlp gagal ({label}):\n{tail}") from None
     if not ok:
         hint = (
             "YouTube tidak mengembalikan format yang bisa diunduh (sering: yt-dlp lawas, cookie basi, "

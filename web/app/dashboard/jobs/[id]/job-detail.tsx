@@ -64,7 +64,7 @@ export function JobDetail({ jobId, initial }: { jobId: string; initial: JobPaylo
   const eventsQ = useQuery({
     queryKey: ["job-events", jobId],
     queryFn: () => fetchEvents(jobId),
-    refetchInterval: job.status === "pending" || job.status === "running" ? 3000 : false,
+    refetchInterval: job.status === "pending" || job.status === "running" ? 2000 : false,
     enabled: job.status !== "failed",
   });
 
@@ -402,6 +402,7 @@ function ProgressPanel({
   progress: number;
   events: JobEventRow[];
 }) {
+  const latest = events[0];
   return (
     <section className="rounded-xl border border-edge bg-surface p-5 shadow-sm">
       <p className="text-sm font-medium text-ink">Progress</p>
@@ -412,9 +413,21 @@ function ProgressPanel({
         />
       </div>
       <p className="mt-2 text-xs text-ink-muted tabular-nums">{Math.round(progress)}%</p>
+      {latest?.message ? (
+        <div className="mt-4 rounded-lg border border-edge bg-canvas/80 px-3 py-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+            Aktivitas terakhir
+          </p>
+          <p className="mt-1 text-sm leading-snug text-ink">{latest.message}</p>
+          <p className="mt-1.5 text-[10px] text-ink-muted">
+            {latest.phase} · {new Date(latest.created_at).toLocaleString("id-ID")} · diperbarui tiap
+            ~2 detik
+          </p>
+        </div>
+      ) : null}
       {events.length > 0 ? (
         <ul className="mt-4 space-y-1 text-xs text-ink-muted">
-          {events.slice(0, 8).map((e) => (
+          {events.slice(0, 12).map((e) => (
             <li key={e.id} className="flex gap-2">
               <span className="font-mono text-[10px] text-ink-muted">
                 {new Date(e.created_at).toLocaleTimeString("id-ID")}

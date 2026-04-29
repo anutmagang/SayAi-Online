@@ -241,7 +241,8 @@ fi
 deactivate || true
 
 log "Configuring PM2 process..."
-run_as_app "cd '${REPO_DIR}/web' && pm2 delete fai-clipper-web >/dev/null 2>&1 || true"
+# Hapus semua proses PM2 user ini agar tidak ada duplikat port (EADDRINUSE).
+run_as_app "pm2 delete all >/dev/null 2>&1 || true"
 run_as_app "cd '${REPO_DIR}/web' && PORT='${APP_PORT}' pm2 start npm --name fai-clipper-web -- start"
 run_as_app "pm2 save"
 pm2 startup systemd -u "${APP_USER}" --hp "$(eval echo "~${APP_USER}")" >/tmp/pm2-startup.txt 2>/dev/null || true
@@ -267,6 +268,11 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        # Superset cookie / header Next+Supabase sering melebihi default 4–8k → 502 "too big header"
+        proxy_buffer_size 128k;
+        proxy_buffers 8 256k;
+        proxy_busy_buffers_size 256k;
+        large_client_header_buffers 4 64k;
     }
 }
 EOF

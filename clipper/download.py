@@ -77,6 +77,17 @@ def _is_youtube(url: str) -> bool:
     return "youtube.com" in u or "youtu.be" in u
 
 
+def _is_youtube_bot_block(blob: str) -> bool:
+    """Blokir login/bot: mencoba format lain untuk player_client yang sama biasanya tidak membantu."""
+    b = blob.lower()
+    return (
+        "sign in to confirm" in b
+        or "please sign in" in b
+        or "confirm you're not a bot" in b
+        or "you're not a bot" in b
+    )
+
+
 def _should_retry_ytdlp_attempt(blob: str) -> bool:
     """True = coba kombinasi berikutnya; False = hentikan dan angkat error ke user."""
     b = blob.lower()
@@ -250,46 +261,50 @@ def download_video(url: str, work_dir: Path, settings: Settings | None = None) -
             (f"{ex} | best no merge", build_cmd(extractor_args, False, "best") + [url]),
         ]
 
-    plan: list[tuple[str, list[str]]] = []
-    for extractor in _youtube_extractor_attempts(url):
-        for label, full in format_attempts(extractor):
-            plan.append((label, full))
-    total_attempts = len(plan)
+    extractors = _youtube_extractor_attempts(url)
+    total_max = sum(len(format_attempts(ex)) for ex in extractors)
 
-    if _can_emit_job_events(settings) and total_attempts:
+    if _can_emit_job_events(settings) and total_max:
         yt_hint = (
-            f"YouTube: mulai yt-dlp — sampai {total_attempts} percobaan client/format bila perlu "
-            "(progres di bawah diperbarui tiap ~20s saat unduhan panjang)."
+            f"YouTube: mulai yt-dlp — hingga {total_max} percobaan; "
+            "varian format dilewati otomatis bila blokir bot (lanjut ke client lain)."
             if _is_youtube(url)
-            else f"Mengunduh sumber URL — {total_attempts} percobaan bila perlu."
+            else f"Mengunduh sumber URL — hingga {total_max} percobaan."
         )
         _emit_download(settings, message=yt_hint, progress=5.0)
 
     last_err = ""
     log_lines: list[str] = []
     ok = False
-    for idx, (label, full) in enumerate(plan, start=1):
-        if _can_emit_job_events(settings):
-            base = "YouTube" if _is_youtube(url) else "URL"
-            prog = 5.0 + min(8.0, (idx - 1) / max(total_attempts, 1) * 8.0)
-            _emit_download(
-                settings,
-                message=f"{base}: mencoba · {label[:120]} ({idx}/{total_attempts})",
-                progress=prog,
+    idx = 0
+    for extractor in extractors:
+        for label, full in format_attempts(extractor):
+            idx += 1
+            if _can_emit_job_events(settings):
+                base = "YouTube" if _is_youtube(url) else "URL"
+                prog = 5.0 + min(8.0, (idx - 1) / max(total_max, 1) * 8.0)
+                _emit_download(
+                    settings,
+                    message=f"{base}: mencoba · {label[:120]} ({idx}/{total_max})",
+                    progress=prog,
+                )
+            r = _run_ytdlp_with_heartbeat(
+                full, timeout, settings, url, label, idx, total_max
             )
-        r = _run_ytdlp_with_heartbeat(
-            full, timeout, settings, url, label, idx, total_attempts
-        )
-        if r.returncode == 0:
-            ok = True
+            if r.returncode == 0:
+                ok = True
+                break
+            blob = (r.stderr or "") + "\n" + (r.stdout or "")
+            tail = blob.strip()[-3500:]
+            last_err = f"[{label}] {tail}"
+            log_lines.append(last_err)
+            if _should_retry_ytdlp_attempt(blob):
+                if _is_youtube(url) and _is_youtube_bot_block(blob):
+                    break
+                continue
+            raise RuntimeError(f"yt-dlp gagal ({label}):\n{tail}") from None
+        if ok:
             break
-        blob = (r.stderr or "") + "\n" + (r.stdout or "")
-        tail = blob.strip()[-3500:]
-        last_err = f"[{label}] {tail}"
-        log_lines.append(last_err)
-        if _should_retry_ytdlp_attempt(blob):
-            continue
-        raise RuntimeError(f"yt-dlp gagal ({label}):\n{tail}") from None
     if not ok:
         hint = (
             "YouTube tidak mengembalikan format yang bisa diunduh (sering: yt-dlp lawas, cookie basi, "

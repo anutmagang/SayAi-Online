@@ -28,6 +28,24 @@ import dotenv from "dotenv";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * YouTube dari VPS sering butuh cookies. Kalau YTDLP_COOKIES belum di .env,
+ * otomatis pakai file di lokasi standar (cukup upload cookie sekali).
+ */
+function applyDefaultYtdlpCookies(root) {
+  if ((process.env.YTDLP_COOKIES || "").trim()) return;
+  const candidates = [
+    path.join(root, "secrets", "youtube-cookies.txt"),
+    path.join(path.dirname(root), "secrets", "youtube-cookies.txt"),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      process.env.YTDLP_COOKIES = path.resolve(p);
+      return;
+    }
+  }
+}
+
 const jobId = process.argv[2];
 const sourceUrl = process.env.SOURCE_URL?.trim() || "";
 const inputFile = process.env.INPUT_FILE?.trim() || "";
@@ -198,7 +216,9 @@ function runClipper(inputLocalFile, envExtra) {
 async function main() {
   await ensureJobDir();
   logStream = fs.createWriteStream(logPath, { flags: "a" });
-  log(`worker start job=${jobId} tier=${userTier}`);
+  log(
+    `worker start job=${jobId} tier=${userTier} youtube_cookies=${process.env.YTDLP_COOKIES ? "yes" : "no"}`,
+  );
 
   await updateJob({ status: "running", error_message: null });
   await emitEvent("starting", "Memulai pipeline", 1);

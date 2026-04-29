@@ -74,16 +74,43 @@ def _is_youtube(url: str) -> bool:
     return "youtube.com" in u or "youtu.be" in u
 
 
-def _append_youtube_extractor_args(cmd: list[str], url: str) -> None:
-    """YouTube sering mengembalikan 0 format dengan client web default — android membuka daftar format."""
+def _should_retry_ytdlp_attempt(blob: str) -> bool:
+    """True = coba kombinasi berikutnya; False = hentikan dan angkat error ke user."""
+    b = blob.lower()
+    if "requested format is not available" in b:
+        return True
+    if "no video formats" in b or "no formats found" in b:
+        return True
+    if "please sign in" in b or "sign in to confirm" in b:
+        return False
+    if "private video" in b or "members only" in b:
+        return False
+    if "invalid" in b and "player_client" in b:
+        return True
+    if "unsupported player client" in b:
+        return True
+    return False
+
+
+def _youtube_extractor_attempts(url: str) -> list[str | None]:
+    """
+    Beberapa rilis yt-dlp/YouTube mengabaikan atau salah parse `player_client=a,b`.
+    Coba satu client per percobaan; None = tanpa --extractor-args (jalur web bawaan).
+    """
     if not _is_youtube(url):
-        return
+        custom = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
+        return [custom or None]
     custom = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if custom:
-        cmd.extend(["--extractor-args", custom])
-        return
-    # Bisa override penuh lewat env; bawa android + web sebagai fallback umum.
-    cmd.extend(["--extractor-args", "youtube:player_client=android,web"])
+        return [custom]
+    return [
+        "youtube:player_client=android",
+        "youtube:player_client=ios",
+        "youtube:player_client=mweb",
+        "youtube:player_client=tv_embedded",
+        "youtube:player_client=web_creator",
+        None,
+    ]
 
 
 def download_video(url: str, work_dir: Path) -> Path:
@@ -104,9 +131,14 @@ def download_video(url: str, work_dir: Path) -> Path:
             )
         cookies_for_ytdlp = _prepare_cookies_file_for_ytdlp(cpath, work_dir)
 
-    def build_cmd(with_merge_mp4: bool, format_override: str | None = None) -> list[str]:
+    def build_cmd(
+        extractor_args: str | None,
+        with_merge_mp4: bool,
+        format_override: str | None = None,
+    ) -> list[str]:
         c: list[str] = [exe]
-        _append_youtube_extractor_args(c, url)
+        if extractor_args:
+            c.extend(["--extractor-args", extractor_args])
         c.extend(
             [
                 "-f",
@@ -131,25 +163,44 @@ def download_video(url: str, work_dir: Path) -> Path:
                 c.extend(["--cookies-from-browser", cfb])
         return c
 
-    # Urutan percobaan: merge mp4 → tanpa merge (best progressive sering gagal jika dipaksa merge).
-    attempts: list[tuple[str, list[str]]] = [
-        ("merge mp4", build_cmd(True) + [url]),
-        ("no merge (same -f)", build_cmd(False) + [url]),
-        ("best, no merge", build_cmd(False, "best") + [url]),
-    ]
+    def format_attempts(extractor_args: str | None) -> list[tuple[str, list[str]]]:
+        ex = extractor_args or "default"
+        return [
+            (f"{ex} | merge mp4", build_cmd(extractor_args, True) + [url]),
+            (f"{ex} | no merge", build_cmd(extractor_args, False) + [url]),
+            (f"{ex} | best no merge", build_cmd(extractor_args, False, "best") + [url]),
+        ]
 
     last_err = ""
-    for label, full in attempts:
-        r = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
-        if r.returncode == 0:
-            break
-        tail = ((r.stderr or "") + "\n" + (r.stdout or "")).strip()[-4000:]
-        last_err = f"[{label}] {tail}"
-        if "Requested format is not available" not in (r.stderr or "") + (r.stdout or ""):
-            # error lain — jangan lanjut diam-diam
+    log_lines: list[str] = []
+    ok = False
+    for extractor in _youtube_extractor_attempts(url):
+        for label, full in format_attempts(extractor):
+            r = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+            if r.returncode == 0:
+                ok = True
+                break
+            blob = (r.stderr or "") + "\n" + (r.stdout or "")
+            tail = blob.strip()[-3500:]
+            last_err = f"[{label}] {tail}"
+            log_lines.append(last_err)
+            if _should_retry_ytdlp_attempt(blob):
+                continue
             raise RuntimeError(f"yt-dlp gagal ({label}):\n{tail}") from None
-    else:
-        raise RuntimeError(f"yt-dlp: semua percobaan format gagal:\n{last_err}") from None
+        if ok:
+            break
+    if not ok:
+        hint = (
+            "YouTube tidak mengembalikan format yang bisa diunduh (sering: yt-dlp lawas, cookie basi, "
+            "atau video diblokir/region). Coba: (1) `sudo yt-dlp -U` atau `pip install -U yt-dlp`, "
+            "(2) ekspor ulang cookies.txt dari akun yang bisa putar video itu di browser, "
+            "(3) unduh video di PC lalu pakai Upload file. "
+            f"Panduan cookie: {_COOKIES_WIKI}"
+        )
+        tail_log = "\n---\n".join(log_lines[-8:])
+        raise RuntimeError(
+            f"yt-dlp: semua kombinasi client/format gagal.\n{tail_log}\n\n{hint}"
+        ) from None
     candidates = sorted(
         work_dir.glob("source.*"),
         key=lambda p: p.stat().st_mtime,

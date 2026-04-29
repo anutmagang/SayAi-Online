@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -77,20 +78,29 @@ def _is_youtube(url: str) -> bool:
     return "youtube.com" in u or "youtu.be" in u
 
 
+def _normalize_err_text(s: str) -> str:
+    """Samakan tipografi pesan error (apostrof Unicode) supaya deteksi bot tidak gagal."""
+    t = s.lower()
+    for u in ("\u2019", "\u2018", "\u02bc"):
+        t = t.replace(u, "'")
+    return t
+
+
 def _is_youtube_bot_block(blob: str) -> bool:
     """Blokir login/bot: mencoba format lain untuk player_client yang sama biasanya tidak membantu."""
-    b = blob.lower()
+    b = _normalize_err_text(blob)
     return (
         "sign in to confirm" in b
         or "please sign in" in b
         or "confirm you're not a bot" in b
         or "you're not a bot" in b
+        or "not a bot" in b
     )
 
 
 def _should_retry_ytdlp_attempt(blob: str) -> bool:
     """True = coba kombinasi berikutnya; False = hentikan dan angkat error ke user."""
-    b = blob.lower()
+    b = _normalize_err_text(blob)
     if "requested format is not available" in b:
         return True
     if "no video formats" in b or "no formats found" in b:
@@ -221,6 +231,12 @@ def download_video(url: str, work_dir: Path, settings: Settings | None = None) -
             )
         cookies_for_ytdlp = _prepare_cookies_file_for_ytdlp(cpath, work_dir)
 
+    if cookies_for_ytdlp is not None and _is_youtube(url):
+        sz = cookies_for_ytdlp.stat().st_size
+        sys.stderr.write(
+            f"[clipper] yt-dlp akan memakai --cookies {cookies_for_ytdlp} ({sz} bytes)\n"
+        )
+
     def build_cmd(
         extractor_args: str | None,
         with_merge_mp4: bool,
@@ -306,13 +322,33 @@ def download_video(url: str, work_dir: Path, settings: Settings | None = None) -
         if ok:
             break
     if not ok:
-        hint = (
-            "YouTube tidak mengembalikan format yang bisa diunduh (sering: yt-dlp lawas, cookie basi, "
-            "atau video diblokir/region). Coba: (1) `sudo yt-dlp -U` atau `pip install -U yt-dlp`, "
-            "(2) ekspor ulang cookies.txt dari akun yang bisa putar video itu di browser, "
-            "(3) unduh video di PC lalu pakai Upload file. "
-            f"Panduan cookie: {_COOKIES_WIKI}"
-        )
+        had_cookies = cookies_for_ytdlp is not None
+        yt = _is_youtube(url)
+        all_bot = bool(log_lines) and all(_is_youtube_bot_block(line) for line in log_lines)
+        if yt and not had_cookies:
+            hint = (
+                "YouTube meminta login/bot-check dan **tidak ada file cookie** untuk yt-dlp "
+                "(variabel YTDLP_COOKIES kosong). Unggah `cookies.txt` di **Pengaturan → Cookie YouTube**, "
+                "atau letakkan `secrets/youtube-cookies.txt` di server / set env YTDLP_COOKIES. "
+                f"Panduan: {_COOKIES_WIKI}"
+            )
+        elif yt and had_cookies and all_bot:
+            hint = (
+                "YouTube menolak **semua** percobaan dengan pesan bot/login — **cookie sudah dikirim** "
+                "(cek baris `[clipper] yt-dlp akan memakai --cookies …` di log di atas). "
+                "Biasanya: (1) ekspor ulang cookie dari tab **youtube.com** saat video ini bisa diputar; "
+                "(2) pakai ekstensi **Get cookies.txt LOCALLY** (bukan export JSON); "
+                "(3) `sudo yt-dlp -U` di VPS; (4) IP datacenter kadang tetap ditolak — unduh video di PC lalu **Upload file**. "
+                f"Detail: {_COOKIES_WIKI}"
+            )
+        else:
+            hint = (
+                "YouTube tidak mengembalikan format yang bisa diunduh (sering: yt-dlp lawas, cookie basi, "
+                "atau video diblokir/region). Coba: (1) `sudo yt-dlp -U` atau `pip install -U yt-dlp`, "
+                "(2) ekspor ulang cookies.txt dari akun yang bisa putar video itu di browser, "
+                "(3) unduh video di PC lalu pakai Upload file. "
+                f"Panduan cookie: {_COOKIES_WIKI}"
+            )
         tail_log = "\n---\n".join(log_lines[-8:])
         raise RuntimeError(
             f"yt-dlp: semua kombinasi client/format gagal.\n{tail_log}\n\n{hint}"

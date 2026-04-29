@@ -35,6 +35,19 @@ async function fetchEvents(id: string): Promise<JobEventRow[]> {
   return res.json() as Promise<JobEventRow[]>;
 }
 
+function showYoutubeCookieSetupHint(sourceUrl: string, err: string | null): boolean {
+  if (!err) return false;
+  const u = sourceUrl.toLowerCase();
+  if (!u.includes("youtube") && !u.includes("youtu.be")) return false;
+  const e = err.toLowerCase();
+  return (
+    e.includes("sign in") ||
+    e.includes("not a bot") ||
+    e.includes("cookie") ||
+    e.includes("authentication")
+  );
+}
+
 export function JobDetail({ jobId, initial }: { jobId: string; initial: JobPayload }) {
   const [job, setJob] = useState(initial);
   const searchParams = useSearchParams();
@@ -98,9 +111,25 @@ export function JobDetail({ jobId, initial }: { jobId: string; initial: JobPaylo
           </button>
         </div>
         {job.error_message ? (
-          <pre className="mt-4 max-h-48 overflow-auto rounded-lg bg-red-50 p-4 text-xs text-red-900">
-            {job.error_message}
-          </pre>
+          <div className="mt-4 space-y-3">
+            <pre className="max-h-48 overflow-auto rounded-lg bg-red-50 p-4 text-xs text-red-900">
+              {job.error_message}
+            </pre>
+            {showYoutubeCookieSetupHint(job.source_url, job.error_message) ? (
+              <p className="rounded-lg border border-edge bg-subtle px-4 py-3 text-sm text-ink">
+                YouTube sering menolak unduhan dari IP server tanpa sesi login. Unggah{" "}
+                <span className="font-mono text-xs">cookies.txt</span> (format Netscape, dari tab
+                youtube.com yang sudah login) di{" "}
+                <Link href="/dashboard/settings" className="font-medium text-accent underline">
+                  Pengaturan → Cookie YouTube
+                </Link>
+                , lalu jalankan job lagi. Pastikan juga file{" "}
+                <span className="font-mono text-xs">youtube-cookies.txt</span> ada di{" "}
+                <span className="font-mono text-xs">secrets/</span> di VPS atau variabel{" "}
+                <span className="font-mono text-xs">YTDLP_COOKIES</span> mengarah ke file itu.
+              </p>
+            ) : null}
+          </div>
         ) : null}
         {creditBillingHint ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">

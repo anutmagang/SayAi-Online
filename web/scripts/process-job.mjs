@@ -246,6 +246,9 @@ async function main() {
   await updateJob({ status: "running", error_message: null });
   await emitEvent("starting", "Memulai pipeline", 1);
 
+  /** Tanpa ini, file `secrets/youtube-cookies.txt` di VPS tidak pernah terbaca kecuali YTDLP_COOKIES di .env. */
+  applyDefaultYtdlpCookies(repoRoot);
+
   const systemYtCookies = (process.env.YTDLP_COOKIES || "").trim();
   const appliedUserCookies = await applyUserYoutubeCookiesIfNeeded();
   if (!appliedUserCookies && systemYtCookies) {

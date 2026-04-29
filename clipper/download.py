@@ -103,7 +103,9 @@ def _youtube_extractor_attempts(url: str) -> list[str | None]:
     custom = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if custom:
         return [custom]
-    return [
+    # Dengan cookies.txt (Netscape), client web biasanya paling selaras dengan sesi browser.
+    has_cookies = bool(os.environ.get("YTDLP_COOKIES", "").strip())
+    chain = [
         "youtube:player_client=android",
         "youtube:player_client=ios",
         "youtube:player_client=mweb",
@@ -111,6 +113,13 @@ def _youtube_extractor_attempts(url: str) -> list[str | None]:
         "youtube:player_client=web_creator",
         None,
     ]
+    if has_cookies:
+        return [
+            "youtube:player_client=web",
+            "youtube:player_client=web_embedded",
+            *chain,
+        ]
+    return chain
 
 
 def download_video(url: str, work_dir: Path) -> Path:

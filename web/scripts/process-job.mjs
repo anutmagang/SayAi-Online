@@ -260,6 +260,17 @@ async function main() {
   log(
     `youtube cookies: ${appliedUserCookies ? "user-storage" : systemYtCookies ? "server-env" : "none"}`,
   );
+  const ytc = (process.env.YTDLP_COOKIES || "").trim();
+  if (ytc) {
+    const abs = path.resolve(ytc);
+    process.env.YTDLP_COOKIES = abs;
+    try {
+      const st = fs.statSync(abs);
+      log(`YTDLP_COOKIES file=${abs} bytes=${st.size}`);
+    } catch {
+      log(`YTDLP_COOKIES file=${abs} (tidak ada atau tidak terbaca)`);
+    }
+  }
 
   const local = inputFile || (await downloadSourceFromStorage());
 

@@ -81,8 +81,10 @@ def _should_retry_ytdlp_attempt(blob: str) -> bool:
         return True
     if "no video formats" in b or "no formats found" in b:
         return True
+    # Jangan berhenti di percobaan pertama: client lain (android/ios/…) sering lolos
+    # dengan cookie yang sama; "web" saja yang ditolak YouTube sebagai bot sangat umum.
     if "please sign in" in b or "sign in to confirm" in b:
-        return False
+        return True
     if "private video" in b or "members only" in b:
         return False
     if "invalid" in b and "player_client" in b:

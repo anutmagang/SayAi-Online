@@ -117,16 +117,26 @@ export function JobDetail({ jobId, initial }: { jobId: string; initial: JobPaylo
             </pre>
             {showYoutubeCookieSetupHint(job.source_url, job.error_message) ? (
               <p className="rounded-lg border border-edge bg-subtle px-4 py-3 text-sm text-ink">
-                YouTube sering menolak unduhan dari IP server tanpa sesi login. Unggah{" "}
-                <span className="font-mono text-xs">cookies.txt</span> (format Netscape, dari tab
-                youtube.com yang sudah login) di{" "}
+                YouTube mem-blok unduhan dari IP server; cookie Netscape membantu. Di{" "}
                 <Link href="/dashboard/settings" className="font-medium text-accent underline">
                   Pengaturan → Cookie YouTube
-                </Link>
-                , lalu jalankan job lagi. Pastikan juga file{" "}
-                <span className="font-mono text-xs">youtube-cookies.txt</span> ada di{" "}
-                <span className="font-mono text-xs">secrets/</span> di VPS atau variabel{" "}
-                <span className="font-mono text-xs">YTDLP_COOKIES</span> mengarah ke file itu.
+                </Link>{" "}
+                unggah ulang <span className="font-mono text-xs">cookies.txt</span> (ekspor dari
+                tab <strong>youtube.com</strong> saat sudah login — ekstensi seperti &quot;Get
+                cookies.txt LOCALLY&quot; menurut{" "}
+                <a
+                  href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
+                  className="text-accent underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  panduan yt-dlp
+                </a>
+                ). Di VPS bisa juga{" "}
+                <span className="font-mono text-xs">secrets/youtube-cookies.txt</span> atau env{" "}
+                <span className="font-mono text-xs">YTDLP_COOKIES</span>. Cek{" "}
+                <span className="font-mono text-xs">worker.log</span> baris{" "}
+                <span className="font-mono text-xs">YTDLP_COOKIES file=… bytes=…</span>.
               </p>
             ) : null}
           </div>

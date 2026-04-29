@@ -12,6 +12,9 @@
 #
 # After install: edit API keys only, then restart:
 #   pm2 restart fai-clipper-web
+#
+# Jika nanti 502 / "upstream sent too big header" / port bentrok:
+#   sudo bash /path/to/repo/scripts/vps-heal-proxy-pm2.sh
 
 set -euo pipefail
 
@@ -323,6 +326,9 @@ Manual steps left:
 4) Check status:
    systemctl status nginx
    su - ${APP_USER} -c "pm2 status"
+
+5) Jika 502 Bad Gateway atau log nginx "upstream sent too big header" / PM2 EADDRINUSE:
+   sudo bash ${REPO_DIR}/scripts/vps-heal-proxy-pm2.sh
 ========================================================
 EOF
 

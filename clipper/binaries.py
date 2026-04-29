@@ -1,6 +1,26 @@
 from __future__ import annotations
 
+import os
 import shutil
+from pathlib import Path
+
+
+def ytdlp_bin() -> str:
+    """Path ke yt-dlp: env YTDLP_PATH / YT_DLP_PATH, atau binary di PATH."""
+    for key in ("YTDLP_PATH", "YT_DLP_PATH"):
+        raw = os.environ.get(key, "").strip()
+        if not raw:
+            continue
+        p = Path(raw).expanduser()
+        if p.is_file():
+            return str(p.resolve())
+    found = shutil.which("yt-dlp")
+    if found:
+        return found
+    raise RuntimeError(
+        "yt-dlp not found. Set YTDLP_PATH to the binary, install globally, "
+        "or ensure venv Scripts/ is on PATH."
+    )
 
 
 def require_ffmpeg() -> None:
@@ -11,8 +31,4 @@ def require_ffmpeg() -> None:
 
 
 def require_yt_dlp() -> None:
-    if not shutil.which("yt-dlp"):
-        raise RuntimeError(
-            "yt-dlp not found on PATH. After `pip install -r requirements.txt`, "
-            "activate the venv so the Scripts folder is on PATH, or install yt-dlp globally."
-        )
+    ytdlp_bin()

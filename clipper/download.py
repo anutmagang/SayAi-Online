@@ -50,6 +50,25 @@ def _prepare_cookies_file_for_ytdlp(src: Path, work_dir: Path) -> Path:
     return src.resolve()
 
 
+def _ytdlp_format_string() -> str:
+    """
+    Rantai format dengan banyak fallback — beberapa video tidak punya pasangan bv+ba
+    yang cocok dengan filter lama (error: Requested format is not available).
+    """
+    custom = os.environ.get("YTDLP_FORMAT", "").strip()
+    if custom:
+        return custom
+    return (
+        "bv*[height<=1080]+ba/"
+        "bv[height<=1080]+ba/"
+        "bv*+ba/"
+        "bv+ba/"
+        "bestvideo[height<=1080]+bestaudio/"
+        "bestvideo+bestaudio/"
+        "best"
+    )
+
+
 def download_video(url: str, work_dir: Path) -> Path:
     """Download best merged video+audio with yt-dlp into work_dir."""
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -58,7 +77,8 @@ def download_video(url: str, work_dir: Path) -> Path:
     exe = ytdlp_bin()
     cmd: list[str] = [
         exe,
-        "-f", "bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b",
+        "-f",
+        _ytdlp_format_string(),
         "--merge-output-format", "mp4",
         "-o", template,
         "--no-playlist",

@@ -7,6 +7,7 @@ import { AuthTurnstile } from "@/components/auth-turnstile";
 import { CloudflareTrustRow } from "@/components/cloudflare-trust-row";
 import { MarketingShell } from "@/components/marketing-shell";
 import { SocialLinks } from "@/components/social-links";
+import { friendlyAuthNetworkError } from "@/lib/auth-ui-errors";
 import { createClient } from "@/lib/supabase/client";
 
 const field =
@@ -44,14 +45,21 @@ export default function SignupPage() {
         return;
       }
     }
-    const supabase = createClient();
-    const { error: signErr } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-    setLoading(false);
-    if (signErr) {
-      setError(signErr.message);
+    try {
+      const supabase = createClient();
+      const { error: signErr } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      setLoading(false);
+      if (signErr) {
+        setError(friendlyAuthNetworkError(signErr.message));
+        return;
+      }
+    } catch (err) {
+      setLoading(false);
+      const m = err instanceof Error ? err.message : String(err);
+      setError(friendlyAuthNetworkError(m));
       return;
     }
     router.push("/dashboard");

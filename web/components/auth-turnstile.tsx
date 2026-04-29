@@ -12,9 +12,11 @@ export function AuthTurnstile({ onToken }: AuthTurnstileProps) {
   if (!siteKey) {
     return (
       <p className="text-[11px] text-ink-muted">
-        Verifikasi bot (Cloudflare) belum diaktifkan — set{" "}
+        Cloudflare Turnstile (anti-bot) opsional — belum dikonfigurasi. Pendaftaran/masuk tetap
+        jalan. Untuk mengaktifkan, set{" "}
         <code className="rounded bg-subtle px-1">NEXT_PUBLIC_TURNSTILE_SITE_KEY</code> dan{" "}
-        <code className="rounded bg-subtle px-1">TURNSTILE_SECRET_KEY</code>.
+        <code className="rounded bg-subtle px-1">TURNSTILE_SECRET_KEY</code> di server lalu build
+        ulang.
       </p>
     );
   }

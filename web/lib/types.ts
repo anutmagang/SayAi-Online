@@ -28,6 +28,8 @@ export type ProfileRow = {
   password_change_lockout_until?: string | null;
   /** Izinkan operator melihat log job untuk bantuan teknis (pilihan user). */
   support_logs_opt_in?: boolean;
+  /** Terakhir unggah cookies.txt YouTube (job URL memakai cookie per user). */
+  youtube_cookies_uploaded_at?: string | null;
   created_at: string;
   updated_at: string;
 };

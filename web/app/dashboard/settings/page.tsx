@@ -50,6 +50,7 @@ export default async function SettingsPage() {
       watermarkPaidEnabled={Boolean(profile?.watermark_paid_enabled)}
       watermarkCustomText={profile?.watermark_custom_text ?? ""}
       watermarkPosition={normalizeWatermarkPosition(profile?.watermark_position)}
+      youtubeCookiesUploadedAt={profile?.youtube_cookies_uploaded_at ?? null}
     />
   );
 }

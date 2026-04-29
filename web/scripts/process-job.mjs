@@ -134,6 +134,31 @@ async function downloadSourceFromStorage() {
   return dest;
 }
 
+/** Cookie YouTube per user (bucket youtube_cookies) — mengalahkan YTDLP_COOKIES server. */
+async function applyUserYoutubeCookiesIfNeeded() {
+  const u = sourceUrl.toLowerCase();
+  const isYt = u.includes("youtube.com") || u.includes("youtu.be");
+  if (!isYt || !userId) {
+    return false;
+  }
+  const key = `${userId}/youtube-cookies.txt`;
+  const { data, error } = await supabase.storage.from("youtube_cookies").download(key);
+  if (error || !data) {
+    log(`user youtube cookies: tidak ada (${error?.message ?? "no file"})`);
+    return false;
+  }
+  const buf = Buffer.from(await data.arrayBuffer());
+  if (buf.length < 80) {
+    log("user youtube cookies: file terlalu kecil, abaikan");
+    return false;
+  }
+  const dest = path.join(jobDir, "youtube-cookies-user.txt");
+  await fsp.writeFile(dest, buf);
+  process.env.YTDLP_COOKIES = dest;
+  log(`user youtube cookies: ${buf.length} bytes -> ${dest}`);
+  return true;
+}
+
 async function uploadClipsToStorage(resultJson) {
   const clipsPrefix = `${userId || "unknown"}/${jobId}`;
   const clips = resultJson.clips ?? [];
@@ -216,12 +241,22 @@ function runClipper(inputLocalFile, envExtra) {
 async function main() {
   await ensureJobDir();
   logStream = fs.createWriteStream(logPath, { flags: "a" });
-  log(
-    `worker start job=${jobId} tier=${userTier} youtube_cookies=${process.env.YTDLP_COOKIES ? "yes" : "no"}`,
-  );
+  log(`worker start job=${jobId} tier=${userTier}`);
 
   await updateJob({ status: "running", error_message: null });
   await emitEvent("starting", "Memulai pipeline", 1);
+
+  const systemYtCookies = (process.env.YTDLP_COOKIES || "").trim();
+  const appliedUserCookies = await applyUserYoutubeCookiesIfNeeded();
+  if (!appliedUserCookies && systemYtCookies) {
+    process.env.YTDLP_COOKIES = systemYtCookies;
+  }
+  if (!appliedUserCookies && !systemYtCookies) {
+    delete process.env.YTDLP_COOKIES;
+  }
+  log(
+    `youtube cookies: ${appliedUserCookies ? "user-storage" : systemYtCookies ? "server-env" : "none"}`,
+  );
 
   const local = inputFile || (await downloadSourceFromStorage());
 

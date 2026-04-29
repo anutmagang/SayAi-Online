@@ -117,6 +117,7 @@ export function SettingsClient({
   watermarkPaidEnabled,
   watermarkCustomText,
   watermarkPosition,
+  youtubeCookiesUploadedAt,
 }: {
   email: string;
   tier: "free" | "starter" | "creator" | "pro";
@@ -126,6 +127,7 @@ export function SettingsClient({
   watermarkPaidEnabled: boolean;
   watermarkCustomText: string;
   watermarkPosition: (typeof WM_POSITIONS)[number]["id"];
+  youtubeCookiesUploadedAt: string | null;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -153,6 +155,10 @@ export function SettingsClient({
   const [wmPos, setWmPos] = useState<(typeof WM_POSITIONS)[number]["id"]>(watermarkPosition);
   const [wmMsg, setWmMsg] = useState<string | null>(null);
   const [wmErr, setWmErr] = useState<string | null>(null);
+
+  const [ytMsg, setYtMsg] = useState<string | null>(null);
+  const [ytErr, setYtErr] = useState<string | null>(null);
+  const [ytBusy, setYtBusy] = useState(false);
 
   const allowed = useMemo(
     () => new Set(allowedLlmPreferencesForTier(tier, isAdmin)),
@@ -185,6 +191,42 @@ export function SettingsClient({
   });
 
   const paidWatermarkUi = tier !== "free" || isAdmin;
+
+  async function uploadYoutubeCookiesFile(file: File) {
+    const maxB = 400 * 1024;
+    if (file.size > maxB) {
+      throw new Error("File maksimal 400 KB.");
+    }
+    const initRes = await fetch("/api/me/youtube-cookies/init", { method: "POST" });
+    const initBody = (await initRes.json().catch(() => ({}))) as {
+      signedUrl?: string;
+      error?: string;
+    };
+    if (!initRes.ok || !initBody.signedUrl) {
+      throw new Error(initBody.error ?? "Gagal menyiapkan unggahan");
+    }
+    const put = await fetch(initBody.signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "text/plain" },
+      body: file,
+    });
+    if (!put.ok) {
+      throw new Error(`Unggah ke Storage gagal (${put.status})`);
+    }
+    const doneRes = await fetch("/api/me/youtube-cookies/complete", { method: "POST" });
+    const doneBody = (await doneRes.json().catch(() => ({}))) as { error?: string };
+    if (!doneRes.ok) {
+      throw new Error(doneBody.error ?? "Validasi cookies gagal");
+    }
+  }
+
+  async function deleteYoutubeCookies() {
+    const res = await fetch("/api/me/youtube-cookies", { method: "DELETE" });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      throw new Error(body.error ?? "Gagal menghapus");
+    }
+  }
 
   const wmMutation = useMutation({
     mutationFn: async (payload: {
@@ -505,6 +547,89 @@ export function SettingsClient({
             </Button>
           </>
         )}
+      </Card>
+
+      <Card>
+        <h2 className="text-lg font-semibold text-ink">Cookie YouTube (per akun)</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Untuk job dari <strong className="text-ink">URL YouTube</strong>, server memakai{" "}
+          <span className="font-mono text-xs">cookies.txt</span> format Netscape dari akun Anda
+          (bukan JSON). Tanpa ini, unduhan dari IP VPS sering ditolak YouTube. Cookie disimpan
+          privat di Storage — hanya dipakai worker saat job Anda berjalan.
+        </p>
+        <p className="mt-2 text-xs text-ink-muted">
+          Ekspor dari browser saat sudah login youtube.com — panduan:{" "}
+          <a
+            href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
+            className="text-accent underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            yt-dlp wiki
+          </a>
+          . Unggah ulang jika unduhan gagal lagi (cookie kadaluarsa).
+        </p>
+        {youtubeCookiesUploadedAt ? (
+          <p className="mt-3 text-sm text-ink">
+            Status: <strong className="text-emerald-800">tersimpan</strong> ·{" "}
+            {new Date(youtubeCookiesUploadedAt).toLocaleString("id-ID")}
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-ink-muted">Status: belum ada file</p>
+        )}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <label className="text-sm">
+            <span className="sr-only">Pilih cookies.txt</span>
+            <input
+              type="file"
+              accept=".txt,text/plain"
+              disabled={ytBusy}
+              className="max-w-xs text-sm text-ink file:mr-2 file:rounded file:border file:border-edge file:bg-surface file:px-2 file:py-1"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                setYtErr(null);
+                setYtMsg(null);
+                setYtBusy(true);
+                void uploadYoutubeCookiesFile(f)
+                  .then(() => {
+                    setYtMsg("Cookie YouTube tersimpan. Job URL berikutnya akan memakainya.");
+                    void queryClient.invalidateQueries({ queryKey: ["me"] });
+                    router.refresh();
+                  })
+                  .catch((err: unknown) => {
+                    setYtErr(err instanceof Error ? err.message : "Gagal mengunggah");
+                  })
+                  .finally(() => setYtBusy(false));
+              }}
+            />
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={ytBusy || !youtubeCookiesUploadedAt}
+            onClick={() => {
+              setYtErr(null);
+              setYtMsg(null);
+              setYtBusy(true);
+              void deleteYoutubeCookies()
+                .then(() => {
+                  setYtMsg("Cookie YouTube dihapus.");
+                  void queryClient.invalidateQueries({ queryKey: ["me"] });
+                  router.refresh();
+                })
+                .catch((err: unknown) => {
+                  setYtErr(err instanceof Error ? err.message : "Gagal menghapus");
+                })
+                .finally(() => setYtBusy(false));
+            }}
+          >
+            Hapus cookie
+          </Button>
+        </div>
+        {ytErr ? <p className="mt-3 text-sm text-red-600">{ytErr}</p> : null}
+        {ytMsg ? <p className="mt-3 text-sm text-emerald-700">{ytMsg}</p> : null}
       </Card>
 
       <Card>

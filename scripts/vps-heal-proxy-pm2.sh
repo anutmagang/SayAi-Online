@@ -4,6 +4,8 @@
 #   sudo bash scripts/vps-heal-proxy-pm2.sh
 # Opsional:
 #   sudo REPO_ROOT=/opt/fai-clipper/app APP_USER=ubuntu APP_PORT=3000 NGINX_SITE=fai-clipper bash scripts/vps-heal-proxy-pm2.sh
+#
+# Catatan: large_client_header_buffers hanya boleh di blok server/http — bukan di location.
 
 set -euo pipefail
 
@@ -27,30 +29,45 @@ ensure_nginx_buffers() {
     log "SKIP nginx: tidak ada ${site_avail} (sesuaikan NGINX_SITE=...)"
     return 0
   fi
-  if grep -qE 'proxy_buffer_size[[:space:]]+128k' "${site_avail}"; then
-    log "nginx: buffer besar sudah ada — lewati patch."
-    return 0
-  fi
-  if ! grep -q 'proxy_set_header X-Forwarded-Proto' "${site_avail}"; then
-    log "WARN: tidak menemukan baris X-Forwarded-Proto — patch manual mungkin diperlukan."
-    return 0
-  fi
+
+  # Hapus semua large_client_header_buffers (bisa salah tempat di location dari patch lama).
+  sed -i '/large_client_header_buffers/d' "${site_avail}"
+
   local tmp
   tmp="$(mktemp)"
   awk '
-    /proxy_set_header X-Forwarded-Proto/ && !ins {
+    /^server *\{/ {
       print
-      print "        proxy_buffer_size 128k;"
-      print "        proxy_buffers 8 256k;"
-      print "        proxy_busy_buffers_size 256k;"
-      print "        large_client_header_buffers 4 64k;"
-      ins = 1
+      print "    large_client_header_buffers 4 64k;"
       next
     }
     { print }
   ' "${site_avail}" > "${tmp}"
   mv "${tmp}" "${site_avail}"
-  log "nginx: buffer proxy ditambahkan ke ${site_avail}"
+
+  if grep -qE 'proxy_buffer_size[[:space:]]+128k' "${site_avail}"; then
+    log "nginx: proxy_* buffers (location) sudah ada — lewati."
+  else
+    if ! grep -q 'proxy_set_header X-Forwarded-Proto' "${site_avail}"; then
+      log "WARN: tidak menemukan baris X-Forwarded-Proto — tambahkan proxy_buffer_size manual di location /"
+    else
+      tmp="$(mktemp)"
+      awk '
+        /proxy_set_header X-Forwarded-Proto/ && !ins {
+          print
+          print "        proxy_buffer_size 128k;"
+          print "        proxy_buffers 8 256k;"
+          print "        proxy_busy_buffers_size 256k;"
+          ins = 1
+          next
+        }
+        { print }
+      ' "${site_avail}" > "${tmp}"
+      mv "${tmp}" "${site_avail}"
+      log "nginx: proxy buffer ditambahkan di location / (${site_avail})"
+    fi
+  fi
+
   nginx -t
   systemctl reload nginx
   log "nginx: reload OK"

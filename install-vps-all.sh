@@ -261,6 +261,8 @@ server {
     listen 80;
     listen [::]:80;
     server_name ${DOMAIN:-_};
+    # Hanya valid di level server/http — bukan di dalam location
+    large_client_header_buffers 4 64k;
 
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
@@ -271,11 +273,10 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # Superset cookie / header Next+Supabase sering melebihi default 4–8k → 502 "too big header"
+        # Header respons Next+Supabase besar → 502 bila buffer kecil
         proxy_buffer_size 128k;
         proxy_buffers 8 256k;
         proxy_busy_buffers_size 256k;
-        large_client_header_buffers 4 64k;
     }
 }
 EOF

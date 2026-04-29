@@ -1,5 +1,35 @@
 # Setup VPS baru — satu skrip instal dependensi
 
+## VPS dari nol (paling lengkap: Node, PM2, Nginx, SSL, build)
+
+Dari **Ubuntu/Debian baru**, satu perintah (ganti URL git, domain, email, user):
+
+```bash
+# Repo publik: bisa unduh skrip mentah. Repo privat: git clone dulu, lalu jalankan file dari disk.
+curl -fsSL -o /tmp/install-vps-all.sh "https://raw.githubusercontent.com/ANDA/AI-Video-Clipper/main/install-vps-all.sh"
+sudo bash /tmp/install-vps-all.sh \
+  --repo /opt/fai-clipper/app \
+  --clone "https://github.com/ANDA/AI-Video-Clipper.git" \
+  --app-user ubuntu \
+  --domain sayai.online \
+  --email admin@sayai.online \
+  --public-url https://sayai.online
+
+# Contoh jika repo sudah ada di /opt/fai-clipper/app (tanpa curl):
+# sudo bash /opt/fai-clipper/app/install-vps-all.sh --repo /opt/fai-clipper/app --app-user ubuntu \
+#   --domain sayai.online --email admin@sayai.online --public-url https://sayai.online
+```
+
+- **`--public-url`** (opsional): ditulis ke `web/.env.local` sebagai `NEXT_PUBLIC_SITE_URL` (tautan reset password & konsistensi domain). Jika dihilangkan tapi **`--domain`** diisi, skrip memakai `https://DOMAIN`.
+- Setelah skrip selesai: isi **secret** di `.env` dan `web/.env.local` (Groq, Supabase), lalu **Supabase → Authentication → Site URL** = URL publik yang sama, dan **`pm2 restart fai-clipper-web`**.
+- **Update kode** tanpa reinstall penuh (user yang sama dengan PM2):
+
+```bash
+cd /opt/fai-clipper/app && chmod +x scripts/vps-deploy-update.sh && ./scripts/vps-deploy-update.sh
+```
+
+---
+
 Skrip **`scripts/vps-bootstrap.sh`** mengotomatiskan **paket OS + Python + build Next.js** dan memanggil **`scripts/init-env.sh`**, yang:
 
 - Membuat **`.env`** dan **`web/.env.local`** dari `*.example` jika belum ada (atau file kosong); jika sudah ada, **hanya menambah** variabel dari contoh yang belum terdefinisi (nilai yang sudah Anda isi tidak dihapus).

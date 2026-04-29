@@ -18,7 +18,8 @@ def viral_score_for_clip(
     Optional caption + hashtag fields add a small bonus when present (social-ready).
     """
     duration = max(0.25, clip_end - clip_start)
-    score = 40.0
+    # Baseline diset agar klip “layak” dengan label + caption sering ≥85 setelah bonus wps/hook/tag.
+    score = 48.0
 
     if 20.0 <= duration <= 55.0:
         score += 20.0

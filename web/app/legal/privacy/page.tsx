@@ -78,7 +78,7 @@ export default function PrivacyPage() {
 
         <h3 className="mt-4 font-medium">Your rights</h3>
         <p>
-          Per Indonesia's PDP Law 27/2022 you may request a copy, correction,
+          Per Indonesia&apos;s PDP Law 27/2022 you may request a copy, correction,
           or deletion of your data. Email <strong>hello@verinusa.com</strong>{" "}
           from the account address.
         </p>

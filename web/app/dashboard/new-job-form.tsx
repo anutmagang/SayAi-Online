@@ -16,6 +16,20 @@ import {
   type Tier,
 } from "@/lib/tiers";
 
+export type WatermarkJobDefaults = {
+  paidEnabled: boolean;
+  customText: string | null;
+  position: string;
+};
+
+const WM_POSITIONS = [
+  { value: "top_left", label: "Atas kiri" },
+  { value: "top_right", label: "Atas kanan" },
+  { value: "bottom_left", label: "Bawah kiri" },
+  { value: "bottom_right", label: "Bawah kanan" },
+  { value: "center", label: "Tengah" },
+] as const;
+
 async function uploadToStorage(
   file: File,
   onProgress: (pct: number) => void,
@@ -65,6 +79,7 @@ export function NewJobForm({
   monthlyQuota,
   monthlyUsed,
   creditsBalance,
+  watermarkDefaults = null,
 }: {
   durationHint: string;
   userTier: Tier;
@@ -72,6 +87,8 @@ export function NewJobForm({
   monthlyQuota: number;
   monthlyUsed: number;
   creditsBalance: number;
+  /** Hanya tier berbayar — untuk pratinjau teks/posisi default dari Pengaturan akun. */
+  watermarkDefaults?: WatermarkJobDefaults | null;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -92,6 +109,11 @@ export function NewJobForm({
   const [outputLayout, setOutputLayout] = useState<"short_vertical" | "long_horizontal">(
     "short_vertical",
   );
+  const [wmJobMode, setWmJobMode] = useState<"profile" | "off" | "custom">("profile");
+  const [wmJobText, setWmJobText] = useState(() => watermarkDefaults?.customText ?? "");
+  const [wmJobPos, setWmJobPos] = useState(
+    () => watermarkDefaults?.position ?? "bottom_right",
+  );
 
   const quotaFullUsesCredits =
     !isAdmin &&
@@ -109,6 +131,9 @@ export function NewJobForm({
         throw new Error(
           "Durasi maksimal harus minimal (minimal + 5) detik — naikkan maks atau turunkan minimal.",
         );
+      }
+      if (userTier !== "free" && wmJobMode === "custom" && !wmJobText.trim()) {
+        throw new Error("Isi teks watermark untuk mode kustom, atau pilih pengaturan akun / tanpa watermark.");
       }
 
       let payload: Record<string, unknown>;
@@ -140,6 +165,17 @@ export function NewJobForm({
           clipMaxDurationSec: clipMaxSec,
           outputLayout,
         };
+      }
+
+      if (userTier !== "free") {
+        if (wmJobMode === "off") {
+          payload.watermarkJobMode = "off";
+        } else if (wmJobMode === "custom") {
+          payload.watermarkJobMode = "custom";
+          payload.watermarkJobText = wmJobText.trim();
+          payload.watermarkJobPosition = wmJobPos;
+        }
+        /* mode "profile": jangan kirim field — API pakai preferensi akun. */
       }
 
       const res = await fetch("/api/jobs", {
@@ -340,6 +376,74 @@ export function NewJobForm({
             />
           </div>
         </div>
+        {userTier === "free" ? (
+          <div className="rounded-lg border border-edge/80 bg-canvas/40 px-3 py-2.5">
+            <p className="text-xs font-medium text-ink">Watermark video (Free)</p>
+            <p className="mt-1 text-xs text-ink-muted leading-relaxed">
+              Setiap file MP4 keluaran memuat watermark bawaan{" "}
+              <strong className="text-ink">Fai-Clipper</strong> (bukan subtitle posting).
+              Posisi default kanan bawah — ini kebijakan paket Free, bukan pengaturan opsional.
+            </p>
+          </div>
+        ) : (
+          <fieldset className="rounded-lg border border-edge/80 bg-canvas/40 px-3 py-3 space-y-3">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Watermark di video (opsional)
+            </legend>
+            <p className="text-xs text-ink-muted leading-relaxed">
+              Bukan subtitle: teks semi-transparan di atas piksel video. Default mengikuti{" "}
+              <strong className="text-ink">Pengaturan akun</strong> (watermark berbayar).
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="wm-job-mode">Mode untuk job ini</Label>
+              <select
+                id="wm-job-mode"
+                className="rounded-md border border-edge bg-surface px-3 py-2 text-sm text-ink"
+                value={wmJobMode}
+                onChange={(e) => setWmJobMode(e.target.value as "profile" | "off" | "custom")}
+              >
+                <option value="profile">Ikuti pengaturan akun</option>
+                <option value="off">Tanpa watermark</option>
+                <option value="custom">Watermark kustom (job ini saja)</option>
+              </select>
+            </div>
+            {wmJobMode === "custom" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1 sm:col-span-2">
+                  <Label htmlFor="wm-job-text">Teks watermark</Label>
+                  <Input
+                    id="wm-job-text"
+                    value={wmJobText}
+                    onChange={(e) => setWmJobText(e.target.value)}
+                    maxLength={120}
+                    placeholder={watermarkDefaults?.customText || "Merek / CTA singkat"}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="wm-job-pos">Posisi</Label>
+                  <select
+                    id="wm-job-pos"
+                    className="rounded-md border border-edge bg-surface px-3 py-2 text-sm text-ink"
+                    value={wmJobPos}
+                    onChange={(e) => setWmJobPos(e.target.value)}
+                  >
+                    {WM_POSITIONS.map((p) => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : null}
+            {watermarkDefaults && !watermarkDefaults.paidEnabled && wmJobMode === "profile" ? (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                Di profil Anda watermark berbayar masih mati — hasil akan tanpa watermark kecuali
+                Anda pilih mode kustom di atas atau mengaktifkan watermark di Pengaturan akun.
+              </p>
+            ) : null}
+          </fieldset>
+        )}
         <p className="text-xs text-ink-muted -mt-2">
           Maksimal harus ≥ minimal + 5 detik. Untuk skor viral di dashboard, rentang
           sekitar <strong>20–55 detik</strong> per klip paling menguntungkan. Teks untuk

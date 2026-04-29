@@ -68,6 +68,10 @@ export function JobDetail({ jobId, initial }: { jobId: string; initial: JobPaylo
   const phase3 = job.result?.phase3;
   const generations = job.result?.generations ?? [];
   const isAiJob = (job.job_type === "image_gen" || job.job_type === "video_gen") && generations.length > 0;
+  const clipsRequested = job.result?.clips_requested;
+  const clipsDelivered = job.result?.clips_delivered ?? clips.length;
+  const viralTargetMin = job.result?.viral_score_target_min ?? 85;
+  const resultTier = job.result?.user_tier ?? job.tier_used;
 
   return (
     <div className="space-y-8">
@@ -131,19 +135,67 @@ export function JobDetail({ jobId, initial }: { jobId: string; initial: JobPaylo
               Unduh semua (ZIP)
             </a>
           </div>
-          {phase3 ? (
+          {clipsRequested != null ? (
             <p className="mt-2 text-sm text-ink-muted">
+              <strong className="text-ink">{clipsDelivered}</strong> klip dihasilkan
+              {clipsRequested !== clipsDelivered ? (
+                <>
+                  {" "}
+                  (saat membuat job diminta <strong className="text-ink">{clipsRequested}</strong> klip). Lebih
+                  sedikit biasanya karena durasi sumber terbatas, tumpang tindih segmen, atau respons model.
+                </>
+              ) : (
+                <> — sesuai jumlah yang diminta.</>
+              )}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-ink-muted">
+              <strong className="text-ink">{clips.length}</strong> klip dalam job ini.
+            </p>
+          )}
+          <p className="mt-1 text-sm text-ink-muted">
+            Target skor viral (heuristik, bukan jaminan algoritma):{" "}
+            <strong className="text-ink">≥ {viralTargetMin}%</strong> per klip. Skor di bawah itu tetap
+            ditampilkan agar Anda bisa menilai potongan tersebut.
+          </p>
+          {phase3 ? (
+            <p className="mt-2 rounded-lg border border-edge/80 bg-canvas/50 px-3 py-2 text-sm text-ink-muted">
+              <span className="font-medium text-ink">Output video: </span>
               {phase3.output_layout === "long_horizontal"
-                ? "Output: konten horizontal 16:9."
-                : "Output: Shorts/Reels 9:16."}
-              {phase3.watermark_text
-                ? ` Watermark: \"${phase3.watermark_text}\".`
-                : " Tanpa watermark."}
+                ? "horizontal 16:9."
+                : "Shorts/Reels 9:16."}{" "}
+              <span className="font-medium text-ink">Watermark file: </span>
+              {resultTier === "free" ? (
+                <>
+                  wajib berwatermark paket Free (
+                  <strong className="text-ink">
+                    {phase3.watermark_text?.trim()
+                      ? `\u201c${phase3.watermark_text}\u201d`
+                      : "Fai-Clipper"}
+                  </strong>
+                  ).
+                </>
+              ) : phase3.watermark_text?.trim() ? (
+                <>
+                  berwatermark{" "}
+                  <strong className="text-ink">{`\u201c${phase3.watermark_text}\u201d`}</strong> (terbakar di
+                  video).
+                </>
+              ) : (
+                <>tanpa watermark teks pada file MP4 (sesuai pengaturan job / akun).</>
+              )}
             </p>
           ) : null}
           <ul className="mt-6 grid gap-6 md:grid-cols-2">
             {clips.map((c, index) => (
-              <ClipCard key={index} jobId={jobId} index={index} clip={c} />
+              <ClipCard
+                key={index}
+                jobId={jobId}
+                index={index}
+                clip={c}
+                clipOrdinalTotal={clips.length}
+                viralTargetMin={viralTargetMin}
+              />
             ))}
           </ul>
         </section>
@@ -193,10 +245,14 @@ function ClipCard({
   jobId,
   index,
   clip,
+  clipOrdinalTotal,
+  viralTargetMin,
 }: {
   jobId: string;
   index: number;
   clip: ClipMeta;
+  clipOrdinalTotal: number;
+  viralTargetMin: number;
 }) {
   const clipId = String(index).padStart(2, "0");
   const src = `/api/jobs/${jobId}/clips/${clipId}`;
@@ -205,6 +261,8 @@ function ClipCard({
   const copyPayload = [caption, hashtags].filter(Boolean).join("\n\n");
   const [copyState, setCopyState] = useState<"idle" | "ok" | "err">("idle");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viral = clip.viral_score;
+  const belowViral = viral != null && viral < viralTargetMin;
 
   async function copyCaptionBlock() {
     if (!copyPayload) return;
@@ -222,12 +280,35 @@ function ClipCard({
 
   return (
     <li className="rounded-xl border border-edge bg-surface p-4 shadow-sm">
-      <p className="text-sm font-medium text-ink">
-        Klip {index + 1}{" "}
-        <span className="font-normal text-ink-muted">
-          ({clip.start_sec.toFixed(1)}s - {clip.end_sec.toFixed(1)}s)
-        </span>
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-sm font-medium text-ink">
+          Klip {index + 1} dari {clipOrdinalTotal}{" "}
+          <span className="font-normal text-ink-muted">
+            ({clip.start_sec.toFixed(1)}s - {clip.end_sec.toFixed(1)}s)
+          </span>
+        </p>
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {clip.watermarked === true ? (
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-800">
+              Berwatermark
+            </span>
+          ) : clip.watermarked === false ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
+              Tanpa watermark
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {viral != null ? (
+        <p
+          className={`mt-1 text-xs font-medium tabular-nums ${
+            belowViral ? "text-amber-800" : "text-emerald-800"
+          }`}
+        >
+          Skor viral (heuristik): {viral.toFixed(0)}%
+          {belowViral ? ` — di bawah target ${viralTargetMin}%` : ` — ≥ target ${viralTargetMin}%`}
+        </p>
+      ) : null}
       {clip.label ? <p className="mt-1 line-clamp-2 text-sm text-ink-muted">{clip.label}</p> : null}
       {caption || hashtags ? (
         <div className="mt-3 space-y-2 rounded-lg border border-edge/80 bg-canvas/60 p-3">

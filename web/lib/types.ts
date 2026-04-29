@@ -89,6 +89,12 @@ export type ClipMeta = {
 
 export type JobResult = {
   job_type?: "clipper" | "image_gen" | "video_gen";
+  /** Diminta user / plafon job (clipper). */
+  clips_requested?: number;
+  /** Jumlah klip setelah LLM + dedupe (bisa < diminta). */
+  clips_delivered?: number;
+  /** Target tampilan skor viral (heuristik), bukan filter keras. */
+  viral_score_target_min?: number;
   source_url: string;
   source_file: string;
   duration_sec: number;

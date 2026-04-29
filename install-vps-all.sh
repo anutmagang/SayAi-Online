@@ -7,6 +7,9 @@
 #   sudo bash install-vps-all.sh --repo /opt/fai-clipper/app
 #   sudo bash install-vps-all.sh --repo /opt/fai-clipper/app --clone "https://github.com/you/repo.git"
 #   sudo bash install-vps-all.sh --repo /opt/fai-clipper/app --domain clip.example.com --email you@example.com
+#   # NEXT_PUBLIC_SITE_URL (tautan email Supabase / redirect) — otomatis https://DOMAIN jika --public-url tidak diisi:
+#   sudo bash install-vps-all.sh --repo /opt/fai-clipper/app --clone "https://github.com/you/repo.git" \
+#     --domain sayai.online --email admin@sayai.online --public-url https://sayai.online
 #   sudo bash install-vps-all.sh --repo /opt/fai-clipper/app --app-user ubuntu --skip-build
 #   sudo bash install-vps-all.sh --repo /opt/fai-clipper/app --db-url "postgresql://..."
 #
@@ -29,6 +32,8 @@ NGINX_SITE_NAME="fai-clipper"
 ENABLE_SSL="1"
 DB_URL=""
 RUN_DB_MIGRATIONS="0"
+# URL publik tanpa slash akhir (contoh https://sayai.online) → ditulis ke web/.env.local sebagai NEXT_PUBLIC_SITE_URL
+PUBLIC_SITE_URL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -67,6 +72,10 @@ while [[ $# -gt 0 ]]; do
     --db-url)
       DB_URL="${2:-}"
       RUN_DB_MIGRATIONS="1"
+      shift 2
+      ;;
+    --public-url)
+      PUBLIC_SITE_URL="${2:-}"
       shift 2
       ;;
     *)
@@ -229,6 +238,13 @@ else
   ensure_env_files_fallback
 fi
 upsert_env_key "${REPO_DIR}/web/.env.local" "PORT" "${APP_PORT}"
+# Domain publik untuk bundel Next (reset password, konsistensi origin)
+if [[ -n "${PUBLIC_SITE_URL}" ]]; then
+  PUBLIC_SITE_URL="${PUBLIC_SITE_URL%/}"
+  upsert_env_key "${REPO_DIR}/web/.env.local" "NEXT_PUBLIC_SITE_URL" "${PUBLIC_SITE_URL}"
+elif [[ -n "${DOMAIN}" ]]; then
+  upsert_env_key "${REPO_DIR}/web/.env.local" "NEXT_PUBLIC_SITE_URL" "https://${DOMAIN}"
+fi
 chown -R "${APP_USER}:${APP_USER}" "${REPO_DIR}"
 
 if [[ "${SKIP_BUILD}" != "1" ]]; then
@@ -309,6 +325,10 @@ Port: ${APP_PORT}
 Domain: ${DOMAIN:-not-set}
 
 Manual steps left:
+0) Supabase Dashboard → Authentication → URL configuration:
+     Site URL = sama dengan NEXT_PUBLIC_SITE_URL di web/.env.local (mis. https://sayai.online).
+     Redirect URLs: https://YOUR_DOMAIN/auth/callback (dan wildcard yang Anda pakai).
+
 1) Edit API keys only:
    - ${REPO_DIR}/.env
    - ${REPO_DIR}/web/.env.local

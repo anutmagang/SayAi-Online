@@ -20,7 +20,9 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
-      .select("tier, is_admin, monthly_quota, monthly_used, credits_balance")
+      .select(
+        "tier, is_admin, monthly_quota, monthly_used, credits_balance, watermark_paid_enabled, watermark_custom_text, watermark_position",
+      )
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
@@ -51,6 +53,15 @@ export default async function DashboardPage() {
             monthlyQuota={profile?.monthly_quota ?? 0}
             monthlyUsed={profile?.monthly_used ?? 0}
             creditsBalance={profile?.credits_balance ?? 0}
+            watermarkDefaults={
+              userTierRaw === "free"
+                ? null
+                : {
+                    paidEnabled: Boolean(profile?.watermark_paid_enabled),
+                    customText: profile?.watermark_custom_text ?? null,
+                    position: profile?.watermark_position ?? "bottom_right",
+                  }
+            }
           />
           <AIGeneratorForm />
         </div>

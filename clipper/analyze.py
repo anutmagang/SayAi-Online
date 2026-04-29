@@ -111,9 +111,12 @@ def _prompt(settings: Settings, transcript_block: str, duration: float) -> tuple
     )
     user = (
         f"Video duration seconds: {duration:.2f}\n"
-        f"Target clip count: up to {settings.max_clips}.\n"
+        f"Target clip count: return as many as possible, up to {settings.max_clips} clips.\n"
         f"Preferred clip duration: {settings.clip_min_duration:.0f}-"
-        f"{settings.clip_max_duration:.0f} seconds.\n\n"
+        f"{settings.clip_max_duration:.0f} seconds per clip.\n"
+        "Hard rules: windows must NOT overlap; leave at least 3 seconds gap between the end "
+        "of one clip and the start of the next. Pick different story beats / hooks — do not "
+        "repeat nearly the same time range.\n\n"
         "Transcript with rough timestamps:\n"
         f"{transcript_block}\n"
     )
@@ -251,12 +254,12 @@ def clamp_clips(
             # Near-duplicate (within 1s start & 1s end): skip.
             if abs(c.start_sec - last.start_sec) < 1.0 and abs(c.end_sec - last.end_sec) < 1.0:
                 continue
-            # Heavy overlap (>70% of the shorter clip): skip the later one.
+            # Heavy overlap (>88% of shorter clip): skip the later one (was 0.7 — too aggressive).
             overlap_start = max(c.start_sec, last.start_sec)
             overlap_end = min(c.end_sec, last.end_sec)
             overlap = max(0.0, overlap_end - overlap_start)
             shorter = min(c.end_sec - c.start_sec, last.end_sec - last.start_sec)
-            if shorter > 0 and (overlap / shorter) > 0.7:
+            if shorter > 0 and (overlap / shorter) > 0.88:
                 continue
         deduped.append(c)
     return deduped

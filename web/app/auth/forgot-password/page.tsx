@@ -21,7 +21,9 @@ export default function ForgotPasswordPage() {
     setErr(null);
     setMsg(null);
     const supabase = createClient();
-    const origin = window.location.origin;
+    /** Prefer NEXT_PUBLIC_SITE_URL di produksi jika proxy/origin tidak sesuai domain publik. */
+    const origin =
+      process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "") || window.location.origin;
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${origin}/auth/callback?next=/auth/update-password`,
     });

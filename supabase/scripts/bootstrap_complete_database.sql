@@ -1104,7 +1104,7 @@ create policy "sources_delete_own"
 
 -- Fai-Clipper release cleanup:
 -- 1) drop leftover beta-only artefacts (100-user cap, beta stats)
--- 2) promote the operator account to admin (imadmin@verinusa.com)
+-- 2) promote the operator account to admin (imadmin@say-ai.online)
 -- 3) add a convenience is-admin check function for RLS
 -- Idempotent.
 
@@ -1120,7 +1120,7 @@ drop function if exists public.beta_enrollment_stats();
 -- ---------------------------------------------------------------------------
 do $$
 declare
-  admin_email constant text := 'imadmin@verinusa.com';
+  admin_email constant text := 'imadmin@say-ai.online';
   admin_uid uuid;
 begin
   select id into admin_uid from auth.users where lower(email) = lower(admin_email);
@@ -4080,6 +4080,6 @@ grant execute on function public.start_ai_job(text, text, text, text, int, text)
 --    Jalankan terpisah: supabase/scripts/promote_admin_by_email.sql
 --
 -- Catatan: migration 005 mem-promote otomatis hanya jika ada user dengan email
---          imadmin@verinusa.com — untuk domain lain pakai promote_admin_by_email.sql.
+--          imadmin@say-ai.online — untuk domain lain pakai promote_admin_by_email.sql.
 -- =============================================================================
 

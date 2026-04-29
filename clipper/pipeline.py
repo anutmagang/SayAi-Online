@@ -13,6 +13,7 @@ from clipper.cut import render_clip
 from clipper.download import download_video
 from clipper.events import emit
 from clipper.media import ffprobe_duration_seconds
+from clipper.phase3_ass import words_for_clip
 from clipper.phase3_render import apply_longform_horizontal, apply_vertical_and_captions
 from clipper.transcribe import segments_to_prompt_block, transcribe_audio
 from clipper.viral_score import viral_score_for_clip
@@ -151,12 +152,13 @@ def run_pipeline(
                 watermark_text=settings.watermark_text,
                 watermark_position=settings.watermark_position,
             )
-        cap_count = 0  # tidak ada subtitle terbakar di video
+        # Kepadatan bicara di jendela klip (bukan subtitle terbakar) — dipakai skor viral.
+        wc = len(words_for_clip(words, clip.start_sec, clip.end_sec))
         vscore = viral_score_for_clip(
             clip.start_sec,
             clip.end_sec,
             clip.label or "",
-            cap_count,
+            wc,
             post_caption=clip.post_caption,
             hashtags=clip.hashtags,
         )
@@ -176,13 +178,16 @@ def run_pipeline(
                     if settings.output_layout == "short_vertical" and settings.phase3_vertical
                     else ([1920, 1080] if settings.output_layout == "long_horizontal" else None)
                 ),
-                "caption_word_count": cap_count,
+                "caption_word_count": wc,
                 "viral_score": vscore,
                 "watermarked": wm_burned_in_video,
             }
         )
 
     meta = {
+        "clips_requested": settings.max_clips,
+        "clips_delivered": len(clip_metas),
+        "viral_score_target_min": 85,
         "source_url": source_label,
         "source_file": source.name,
         "duration_sec": duration,

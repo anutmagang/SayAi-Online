@@ -150,6 +150,23 @@ export async function POST(request: Request) {
     );
   }
 
+  const wm = parsed.data as {
+    watermarkJobMode?: "profile" | "off" | "custom";
+    watermarkJobText?: string;
+    watermarkJobPosition?: string;
+  };
+  if (
+    userTier === "free" &&
+    (wm.watermarkJobMode !== undefined ||
+      (wm.watermarkJobText && wm.watermarkJobText.trim()) ||
+      wm.watermarkJobPosition)
+  ) {
+    return NextResponse.json(
+      { error: "Opsi watermark per-job hanya untuk paket berbayar." },
+      { status: 400 },
+    );
+  }
+
   const rpcArgs =
     parsed.data.kind === "url"
       ? { p_source_url: parsed.data.url, p_source_kind: "url", p_source_storage_path: null }
@@ -194,13 +211,32 @@ export async function POST(request: Request) {
     workerEnv.WATERMARK_POSITION =
       process.env.FREE_TIER_WATERMARK_POSITION?.trim() || "bottom_right";
   } else {
-    workerEnv.WATERMARK_PAID_ENABLED = row.watermark_paid_enabled ? "true" : "false";
-    workerEnv.WATERMARK_CUSTOM_TEXT = (row.watermark_custom_text ?? "").trim();
-    workerEnv.WATERMARK_POSITION = (
-      row.watermark_position?.trim() ||
-      process.env.WATERMARK_POSITION?.trim() ||
-      "bottom_right"
-    );
+    const wmMode = wm.watermarkJobMode ?? "profile";
+    if (wmMode === "off") {
+      workerEnv.WATERMARK_PAID_ENABLED = "false";
+      workerEnv.WATERMARK_CUSTOM_TEXT = "";
+      workerEnv.WATERMARK_POSITION =
+        row.watermark_position?.trim() ||
+        process.env.WATERMARK_POSITION?.trim() ||
+        "bottom_right";
+    } else if (wmMode === "custom") {
+      const t = (wm.watermarkJobText ?? "").trim();
+      workerEnv.WATERMARK_PAID_ENABLED = t ? "true" : "false";
+      workerEnv.WATERMARK_CUSTOM_TEXT = t;
+      workerEnv.WATERMARK_POSITION =
+        wm.watermarkJobPosition?.trim() ||
+        row.watermark_position?.trim() ||
+        process.env.WATERMARK_POSITION?.trim() ||
+        "bottom_right";
+    } else {
+      workerEnv.WATERMARK_PAID_ENABLED = row.watermark_paid_enabled ? "true" : "false";
+      workerEnv.WATERMARK_CUSTOM_TEXT = (row.watermark_custom_text ?? "").trim();
+      workerEnv.WATERMARK_POSITION = (
+        row.watermark_position?.trim() ||
+        process.env.WATERMARK_POSITION?.trim() ||
+        "bottom_right"
+      );
+    }
   }
   if (row.llm_model_id?.trim()) {
     workerEnv.LLM_MODEL_ID = row.llm_model_id.trim();

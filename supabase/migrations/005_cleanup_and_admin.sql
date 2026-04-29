@@ -1,6 +1,6 @@
 -- Fai-Clipper release cleanup:
 -- 1) drop leftover beta-only artefacts (100-user cap, beta stats)
--- 2) promote the operator account to admin (imadmin@verinusa.com)
+-- 2) promote the operator account to admin (imadmin@say-ai.online)
 -- 3) add a convenience is-admin check function for RLS
 -- Idempotent.
 
@@ -16,7 +16,7 @@ drop function if exists public.beta_enrollment_stats();
 -- ---------------------------------------------------------------------------
 do $$
 declare
-  admin_email constant text := 'imadmin@verinusa.com';
+  admin_email constant text := 'imadmin@say-ai.online';
   admin_uid uuid;
 begin
   select id into admin_uid from auth.users where lower(email) = lower(admin_email);

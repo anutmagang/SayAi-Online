@@ -146,6 +146,13 @@ function runClipper(inputLocalFile, envExtra) {
       ? [...base, "--input", inputLocalFile]
       : [...base, sourceUrl];
 
+    /** Supaya error_message job tidak cuma stack Node — ambil tail stderr Python. */
+    const captureMax = 24_000;
+    let stderrTail = "";
+    const appendStderr = (chunk) => {
+      stderrTail = (stderrTail + chunk.toString("utf8")).slice(-captureMax);
+    };
+
     const child = spawn(python, args, {
       cwd: repoRoot,
       env: {
@@ -161,7 +168,10 @@ function runClipper(inputLocalFile, envExtra) {
     });
 
     child.stdout.on("data", (d) => logStream?.write(d));
-    child.stderr.on("data", (d) => logStream?.write(d));
+    child.stderr.on("data", (d) => {
+      logStream?.write(d);
+      appendStderr(d);
+    });
 
     const timeoutSec = parseInt(process.env.PIPELINE_TIMEOUT_SEC || "3600", 10);
     const killer = setTimeout(() => {
@@ -176,7 +186,11 @@ function runClipper(inputLocalFile, envExtra) {
     child.on("exit", (code, signal) => {
       clearTimeout(killer);
       if (code === 0) resolve();
-      else reject(new Error(`clipper exited code=${code} signal=${signal}`));
+      const tail = stderrTail.trim();
+      const detail = tail
+        ? `\n--- clipper stderr (tail) ---\n${tail}`
+        : `\n(no stderr captured; inspect ${logPath} on server)`;
+      reject(new Error(`clipper exited code=${code} signal=${signal}${detail}`));
     });
   });
 }

@@ -69,26 +69,32 @@ def _ytdlp_format_string() -> str:
     )
 
 
+def _is_youtube(url: str) -> bool:
+    u = url.lower()
+    return "youtube.com" in u or "youtu.be" in u
+
+
+def _append_youtube_extractor_args(cmd: list[str], url: str) -> None:
+    """YouTube sering mengembalikan 0 format dengan client web default — android membuka daftar format."""
+    if not _is_youtube(url):
+        return
+    custom = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
+    if custom:
+        cmd.extend(["--extractor-args", custom])
+        return
+    # Bisa override penuh lewat env; bawa android + web sebagai fallback umum.
+    cmd.extend(["--extractor-args", "youtube:player_client=android,web"])
+
+
 def download_video(url: str, work_dir: Path) -> Path:
     """Download best merged video+audio with yt-dlp into work_dir."""
     work_dir.mkdir(parents=True, exist_ok=True)
     template = str(work_dir / "source.%(ext)s")
     timeout = int(os.environ.get("DOWNLOAD_TIMEOUT_SEC", "1800"))  # 30 min default
     exe = ytdlp_bin()
-    cmd: list[str] = [
-        exe,
-        "-f",
-        _ytdlp_format_string(),
-        "--merge-output-format", "mp4",
-        "-o", template,
-        "--no-playlist",
-        "--no-warnings",
-        "--socket-timeout", "60",
-        "--retries", "3",
-    ]
+    fmt = _ytdlp_format_string()
 
-    # YouTube sering meminta login dari IP datacenter — pakai cookies ekspor browser.
-    # https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp
+    cookies_for_ytdlp: Path | None = None
     cookies_file = os.environ.get("YTDLP_COOKIES", "").strip()
     if cookies_file:
         cpath = Path(cookies_file).expanduser()
@@ -97,14 +103,53 @@ def download_video(url: str, work_dir: Path) -> Path:
                 f"YTDLP_COOKIES path not found: {cpath}. Export cookies.txt from your browser."
             )
         cookies_for_ytdlp = _prepare_cookies_file_for_ytdlp(cpath, work_dir)
-        cmd.extend(["--cookies", str(cookies_for_ytdlp)])
-    else:
-        cfb = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "").strip()
-        if cfb:
-            cmd.extend(["--cookies-from-browser", cfb])
 
-    cmd.append(url)
-    subprocess.run(cmd, check=True, timeout=timeout)
+    def build_cmd(with_merge_mp4: bool, format_override: str | None = None) -> list[str]:
+        c: list[str] = [exe]
+        _append_youtube_extractor_args(c, url)
+        c.extend(
+            [
+                "-f",
+                format_override or fmt,
+                "-o",
+                template,
+                "--no-playlist",
+                "--no-warnings",
+                "--socket-timeout",
+                "60",
+                "--retries",
+                "3",
+            ]
+        )
+        if with_merge_mp4:
+            c.extend(["--merge-output-format", "mp4"])
+        if cookies_for_ytdlp is not None:
+            c.extend(["--cookies", str(cookies_for_ytdlp)])
+        else:
+            cfb = os.environ.get("YTDLP_COOKIES_FROM_BROWSER", "").strip()
+            if cfb:
+                c.extend(["--cookies-from-browser", cfb])
+        return c
+
+    # Urutan percobaan: merge mp4 → tanpa merge (best progressive sering gagal jika dipaksa merge).
+    attempts: list[tuple[str, list[str]]] = [
+        ("merge mp4", build_cmd(True) + [url]),
+        ("no merge (same -f)", build_cmd(False) + [url]),
+        ("best, no merge", build_cmd(False, "best") + [url]),
+    ]
+
+    last_err = ""
+    for label, full in attempts:
+        r = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+        if r.returncode == 0:
+            break
+        tail = ((r.stderr or "") + "\n" + (r.stdout or "")).strip()[-4000:]
+        last_err = f"[{label}] {tail}"
+        if "Requested format is not available" not in (r.stderr or "") + (r.stdout or ""):
+            # error lain — jangan lanjut diam-diam
+            raise RuntimeError(f"yt-dlp gagal ({label}):\n{tail}") from None
+    else:
+        raise RuntimeError(f"yt-dlp: semua percobaan format gagal:\n{last_err}") from None
     candidates = sorted(
         work_dir.glob("source.*"),
         key=lambda p: p.stat().st_mtime,

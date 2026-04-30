@@ -325,6 +325,9 @@ Port: ${APP_PORT}
 Domain: ${DOMAIN:-not-set}
 
 Manual steps left:
+- Update kode nanti: `cd ${REPO_DIR} && ./scripts/vps-deploy-update.sh` — sudah termasuk `init-env.sh`
+  (menambah variabel baru dari *.example tanpa menghapus key yang sudah Anda isi).
+
 0) Supabase Dashboard → Authentication → URL configuration:
      Site URL = sama dengan NEXT_PUBLIC_SITE_URL di web/.env.local (mis. https://sayai.online).
      Redirect URLs: https://YOUR_DOMAIN/auth/callback (dan wildcard yang Anda pakai).

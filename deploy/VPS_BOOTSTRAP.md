@@ -35,9 +35,18 @@ Skrip **`scripts/vps-bootstrap.sh`** mengotomatiskan **paket OS + Python + build
 - Membuat **`.env`** dan **`web/.env.local`** dari `*.example` jika belum ada (atau file kosong); jika sudah ada, **hanya menambah** variabel dari contoh yang belum terdefinisi (nilai yang sudah Anda isi tidak dihapus).
 - Mengatur **path**: `CLIPPER_OUTPUT`, `CLIPPER_REPO_ROOT`, `PYTHON_BIN` (prioritas `.venv/bin/python` jika ada), `FFMPEG_DRAW_TEXT_FONT` (Dejavu di Linux / Arial di Git Bash Windows).
 
-**Tanpa perintah `cp .env.example` manual.** Yang tetap Anda isi: **API key & Supabase** serta **migrasi SQL** di dashboard.
+**Tanpa perintah `cp .env.example` manual.** Skrip **`scripts/init-env.sh`** yang menangani: salin dari contoh jika belum ada, **gabung** variabel baru dari `*.example` jika repo sudah punya `.env` (nilai yang sudah Anda isi tidak ditimpa). Folder **`output/`** dan **`secrets/`** dibuat; di `secrets/README.txt` ada petunjuk cookie YouTube server (opsional).
 
-Lokal / VPS ringan tanpa full bootstrap: jalankan saja `./scripts/init-env.sh` dari root repo.
+### Apa yang otomatis vs yang Anda isi (VPS kosong)
+
+| Sudah otomatis | Anda lakukan manual |
+|----------------|---------------------|
+| `.env` ← `.env.example`, `web/.env.local` ← `web/.env.local.example` | **Wajib:** `GROQ_API_KEY` (root `.env`); `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (`web/.env.local`) |
+| Path `CLIPPER_OUTPUT`, `CLIPPER_REPO_ROOT`, `PYTHON_BIN`, font FFmpeg | **Supabase** → Authentication → Site URL = sama dengan `NEXT_PUBLIC_SITE_URL` produksi |
+| `secrets/` untuk `youtube-cookies.txt` (opsional) | **Migrasi SQL** di Supabase (urutan `supabase/migrations/*.sql`) |
+| Setelah **`git pull`**: jalankan lagi `./scripts/init-env.sh` — atau pakai **`scripts/vps-deploy-update.sh`** (sudah memanggil `init-env` di dalamnya) | Provider / Turnstile / Sentry / cron: **kosongkan** atau beri **`#`** di depan baris = nonaktif (lihat komentar di file contoh) |
+
+Lokal / VPS ringan tanpa full bootstrap: dari root repo jalankan **`./scripts/init-env.sh`** (cukup itu untuk file env + path).
 
 ## Prasyarat
 

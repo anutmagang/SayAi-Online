@@ -28,6 +28,12 @@ cd "$REPO_ROOT"
 log "git pull (ff-only)…"
 git pull --ff-only
 
+if [[ -f "$REPO_ROOT/scripts/init-env.sh" ]]; then
+  chmod +x "$REPO_ROOT/scripts/init-env.sh" 2>/dev/null || true
+  log "init-env.sh — merge key baru dari .env.example / web/.env.local.example (nilai lama tetap)…"
+  bash "$REPO_ROOT/scripts/init-env.sh"
+fi
+
 if [[ "$SKIP_PIP" != "1" ]]; then
   log "Python venv + pip install -r requirements.txt…"
   if [[ ! -d .venv ]]; then

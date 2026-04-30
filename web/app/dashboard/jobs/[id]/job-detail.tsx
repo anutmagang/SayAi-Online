@@ -35,16 +35,71 @@ async function fetchEvents(id: string): Promise<JobEventRow[]> {
   return res.json() as Promise<JobEventRow[]>;
 }
 
-function showYoutubeCookieSetupHint(sourceUrl: string, err: string | null): boolean {
+/** Job gagal dari URL YouTube / yt-dlp — tampilkan panduan cookie + alternatif upload. */
+function showYoutubeDownloadRecoveryHint(sourceUrl: string, err: string | null): boolean {
   if (!err) return false;
   const u = sourceUrl.toLowerCase();
-  if (!u.includes("youtube") && !u.includes("youtu.be")) return false;
+  if (!u.includes("youtube.com") && !u.includes("youtu.be")) return false;
   const e = err.toLowerCase();
   return (
     e.includes("sign in") ||
     e.includes("not a bot") ||
     e.includes("cookie") ||
-    e.includes("authentication")
+    e.includes("authentication") ||
+    e.includes("yt-dlp") ||
+    e.includes("ytdlp") ||
+    e.includes("semua kombinasi") ||
+    e.includes("youtube menolak") ||
+    e.includes("tidak ada file cookie")
+  );
+}
+
+function YoutubeDownloadFailedHelp() {
+  const wiki =
+    "https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies";
+  return (
+    <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-4 py-4 text-sm text-amber-950 shadow-sm">
+      <p className="font-semibold text-amber-950">Unduhan YouTube gagal (yt-dlp)</p>
+      <p className="mt-2 leading-relaxed text-amber-950/95">
+        YouTube sering menolak unduhan dari server tanpa sesi login yang valid, atau cookie Anda
+        perlu diperbarui. Pilih salah satu jalur di bawah.
+      </p>
+      <ol className="mt-3 list-decimal space-y-2.5 pl-5 leading-relaxed text-amber-950/95">
+        <li>
+          <strong>Perbarui cookie Anda</strong> (disarankan untuk tetap pakai URL YouTube). Buka{" "}
+          <Link href="/dashboard/settings" className="font-medium text-accent underline">
+            Pengaturan → Cookie YouTube
+          </Link>
+          , unggah file <span className="font-mono text-xs">cookies.txt</span> format{" "}
+          <strong>Netscape</strong> (bukan JSON). Ekspor dari browser saat tab{" "}
+          <strong>youtube.com</strong> sudah login dan video ini bisa diputar.
+        </li>
+        <li>
+          <strong>Panduan ekspor resmi yt-dlp</strong> (ekstensi &quot;Get cookies.txt LOCALLY&quot;
+          dll.):{" "}
+          <a href={wiki} className="font-medium text-accent underline" target="_blank" rel="noreferrer">
+            Exporting YouTube cookies
+          </a>
+          . Setelah unggah, buat <strong>job baru</strong> dengan URL yang sama.
+        </li>
+        <li>
+          <strong>Jalurnya tetap macet?</strong> Gunakan alternatif: unduh videonya di komputer
+          atau HP (lewat browser / aplikasi apa pun yang Anda pakai biasanya), lalu di{" "}
+          <Link href="/dashboard" className="font-medium text-accent underline">
+            dashboard → job baru
+          </Link>{" "}
+          pilih <strong>Upload file</strong> sebagai sumber. Pipeline klip tetap sama; yang
+          dihindari hanya unduhan langsung dari server ke YouTube.
+        </li>
+      </ol>
+      <p className="mt-3 text-xs leading-relaxed text-amber-900/85">
+        Admin VPS: file global opsional di{" "}
+        <span className="font-mono">secrets/youtube-cookies.txt</span> atau env{" "}
+        <span className="font-mono">YTDLP_COOKIES</span>. Cek <span className="font-mono">worker.log</span>{" "}
+        untuk baris <span className="font-mono">yt-dlp akan memakai --cookies</span> /{" "}
+        <span className="font-mono">YTDLP_COOKIES file=</span>.
+      </p>
+    </div>
   );
 }
 
@@ -115,29 +170,8 @@ export function JobDetail({ jobId, initial }: { jobId: string; initial: JobPaylo
             <pre className="max-h-48 overflow-auto rounded-lg bg-red-50 p-4 text-xs text-red-900">
               {job.error_message}
             </pre>
-            {showYoutubeCookieSetupHint(job.source_url, job.error_message) ? (
-              <p className="rounded-lg border border-edge bg-subtle px-4 py-3 text-sm text-ink">
-                YouTube mem-blok unduhan dari IP server; cookie Netscape membantu. Di{" "}
-                <Link href="/dashboard/settings" className="font-medium text-accent underline">
-                  Pengaturan → Cookie YouTube
-                </Link>{" "}
-                unggah ulang <span className="font-mono text-xs">cookies.txt</span> (ekspor dari
-                tab <strong>youtube.com</strong> saat sudah login — ekstensi seperti &quot;Get
-                cookies.txt LOCALLY&quot; menurut{" "}
-                <a
-                  href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies"
-                  className="text-accent underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  panduan yt-dlp
-                </a>
-                ). Di VPS bisa juga{" "}
-                <span className="font-mono text-xs">secrets/youtube-cookies.txt</span> atau env{" "}
-                <span className="font-mono text-xs">YTDLP_COOKIES</span>. Cek{" "}
-                <span className="font-mono text-xs">worker.log</span> baris{" "}
-                <span className="font-mono text-xs">YTDLP_COOKIES file=… bytes=…</span>.
-              </p>
+            {showYoutubeDownloadRecoveryHint(job.source_url, job.error_message) ? (
+              <YoutubeDownloadFailedHelp />
             ) : null}
           </div>
         ) : null}
